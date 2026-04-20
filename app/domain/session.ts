@@ -2,7 +2,7 @@ import type { Line } from './types'
 
 export const TARGET_REPS = 5
 
-export type SessionPhase = 'building' | 'repeating' | 'done'
+export type SessionPhase = 'intro' | 'building' | 'repeating' | 'done'
 
 export interface SessionState {
   line: Line
@@ -12,6 +12,15 @@ export interface SessionState {
   repsDone: number
   expectedSan: string | null
   totalSteps: number
+  /**
+   * Number of half-moves at the start of `line.sanMoves` that are considered
+   * a "prefix" – these plies were already mastered through a parent line and
+   * should be treated as setup. The very first time we encounter the line
+   * the user plays through them in the `intro` phase; every subsequent reset
+   * (step-switch, rep loop) starts from this position rather than from the
+   * empty board.
+   */
+  prefixPlies: number
 }
 
 export type SubmitResult =
@@ -24,16 +33,25 @@ const isUserMoveIndex = (line: Line, index: number): boolean => {
   return ply === line.userSide
 }
 
-const userMoveIndices = (line: Line): number[] => {
+/**
+ * Indices of user-side half-moves at or after {@link fromIdx}. When a prefix
+ * is configured we exclude the setup plies from step counting entirely so
+ * the user only "unlocks" moves that belong to the extension.
+ */
+const userMoveIndices = (line: Line, fromIdx = 0): number[] => {
   const indices: number[] = []
-  for (let i = 0; i < line.sanMoves.length; i += 1) {
+  for (let i = fromIdx; i < line.sanMoves.length; i += 1) {
     if (isUserMoveIndex(line, i)) indices.push(i)
   }
   return indices
 }
 
-const lastPlyForStep = (line: Line, step: number): number => {
-  const indices = userMoveIndices(line)
+const lastPlyForStep = (
+  line: Line,
+  step: number,
+  prefixPlies: number,
+): number => {
+  const indices = userMoveIndices(line, prefixPlies)
   const userMoveIdx = Math.min(Math.max(step, 1), indices.length) - 1
   return indices[userMoveIdx] ?? -1
 }
@@ -57,19 +75,33 @@ const cloneWith = (
   overrides: Partial<SessionState>,
 ): SessionState => recompute({ ...state, ...overrides })
 
-export const startSession = (line: Line): SessionState => {
-  const totalSteps = userMoveIndices(line).length
-  const phase: SessionPhase =
-    line.sanMoves.length === 0 || totalSteps === 0 ? 'done' : 'building'
+const clampPrefix = (line: Line, prefixPlies: number): number => {
+  if (!Number.isFinite(prefixPlies) || prefixPlies <= 0) return 0
+  if (prefixPlies >= line.sanMoves.length) return 0
+  return Math.floor(prefixPlies)
+}
+
+export const startSession = (line: Line, prefixPlies = 0): SessionState => {
+  const safePrefix = clampPrefix(line, prefixPlies)
+  const totalSteps = userMoveIndices(line, safePrefix).length
+  const hasWork = line.sanMoves.length > 0 && totalSteps > 0
+  const phase: SessionPhase = !hasWork
+    ? 'done'
+    : safePrefix > 0
+      ? 'intro'
+      : 'building'
+
+  const startIndex = phase === 'building' ? 0 : phase === 'intro' ? 0 : line.sanMoves.length
 
   return {
     line,
     phase,
     currentStep: 1,
-    expectedMoveIndex: 0,
+    expectedMoveIndex: startIndex,
     repsDone: 0,
     totalSteps,
-    expectedSan: phase === 'done' ? null : (line.sanMoves[0] ?? null),
+    prefixPlies: safePrefix,
+    expectedSan: phase === 'done' ? null : (line.sanMoves[startIndex] ?? null),
   }
 }
 
@@ -93,8 +125,28 @@ export const submitMove = (
   const totalMoves = state.line.sanMoves.length
   const nextIndex = state.expectedMoveIndex + 1
 
+  if (state.phase === 'intro') {
+    // Still replaying the parent's prefix. Once the cursor reaches the first
+    // ply of the extension we flip into the building phase – the user has
+    // now reached the parent position and can start learning new moves.
+    if (nextIndex >= state.prefixPlies) {
+      return {
+        result: 'correct',
+        state: cloneWith(state, {
+          phase: 'building',
+          currentStep: 1,
+          expectedMoveIndex: state.prefixPlies,
+        }),
+      }
+    }
+    return {
+      result: 'correct',
+      state: cloneWith(state, { expectedMoveIndex: nextIndex }),
+    }
+  }
+
   if (state.phase === 'building') {
-    const stepEndPly = lastPlyForStep(state.line, state.currentStep)
+    const stepEndPly = lastPlyForStep(state.line, state.currentStep, state.prefixPlies)
     const stepFinished = nextIndex > stepEndPly
 
     if (!stepFinished) {
@@ -110,7 +162,7 @@ export const submitMove = (
         result: 'correct',
         state: cloneWith(state, {
           currentStep: state.currentStep + 1,
-          expectedMoveIndex: 0,
+          expectedMoveIndex: state.prefixPlies,
         }),
       }
     }
@@ -120,7 +172,7 @@ export const submitMove = (
         result: 'correct',
         state: cloneWith(state, {
           phase: 'repeating',
-          expectedMoveIndex: 0,
+          expectedMoveIndex: state.prefixPlies,
           repsDone: 0,
         }),
       }
@@ -155,14 +207,14 @@ export const submitMove = (
   return {
     result: 'correct',
     state: cloneWith(state, {
-      expectedMoveIndex: 0,
+      expectedMoveIndex: state.prefixPlies,
       repsDone: newReps,
     }),
   }
 }
 
 export const repeatFromStart = (state: SessionState): SessionState =>
-  cloneWith(state, { expectedMoveIndex: 0 })
+  cloneWith(state, { expectedMoveIndex: state.prefixPlies })
 
 export const revealNext = (state: SessionState): string | null =>
   state.expectedSan
@@ -170,9 +222,14 @@ export const revealNext = (state: SessionState): string | null =>
 /**
  * True when the engine is currently waiting on the user move that defines the
  * current step (the "new" move that was just unlocked). Used to drive the
- * board hint that demonstrates the move on the first encounter.
+ * board hint that demonstrates the move on the first encounter. Intro plies
+ * are never "new" since the user has already mastered them via the parent.
  */
 export const isNewStepMove = (state: SessionState): boolean => {
   if (state.phase !== 'building') return false
-  return state.expectedMoveIndex === lastPlyForStep(state.line, state.currentStep)
+  return state.expectedMoveIndex === lastPlyForStep(
+    state.line,
+    state.currentStep,
+    state.prefixPlies,
+  )
 }

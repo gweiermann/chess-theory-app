@@ -29,12 +29,16 @@ export interface Banner {
  * build it on demand without over-coupling.
  */
 export interface PhaseMarkers {
-  phase: 'building' | 'repeating' | 'done'
+  phase: 'intro' | 'building' | 'repeating' | 'done'
   currentStep: number
   repsDone: number
 }
 
-export type ResetReason = 'next-step' | 'to-repeating' | 'next-rep'
+export type ResetReason =
+  | 'intro-complete'
+  | 'next-step'
+  | 'to-repeating'
+  | 'next-rep'
 
 /**
  * Classify a phase-marker transition into the reason that triggers a board
@@ -46,6 +50,7 @@ export const getResetReason = (
   after: PhaseMarkers,
 ): ResetReason | null => {
   if (after.phase === 'done') return null
+  if (before.phase === 'intro' && after.phase === 'building') return 'intro-complete'
   if (before.phase === 'building' && after.phase === 'repeating') return 'to-repeating'
   if (
     before.phase === 'building'
@@ -77,6 +82,12 @@ export const bannerForResetReason = (
   reason: ResetReason,
   after: PhaseMarkers,
 ): Banner => {
+  if (reason === 'intro-complete') {
+    return {
+      kind: 'setup-complete',
+      text: 'Grundposition erreicht – jetzt die Erweiterung',
+    }
+  }
   if (reason === 'to-repeating') {
     return {
       kind: 'setup-complete',

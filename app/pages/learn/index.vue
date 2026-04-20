@@ -4,17 +4,16 @@ import { useRouter } from 'vue-router'
 import { useTopic } from '~/composables/useTopic'
 import { useTopicProgress } from '~/composables/useTopicProgress'
 import { useCurrentSelection } from '~/composables/useCurrentSelection'
+import { useLearnState } from '~/composables/useLearnState'
 import {
   createTrainingSession,
-  type TrainingSession,
 } from '~/composables/training-session'
-import { selectLineForFocus } from '~/domain/select-next-line'
+import { findParentLine, selectLineForFocus } from '~/domain/select-next-line'
 import { isNewStepMove, TARGET_REPS } from '~/domain/session'
 import {
   MISTAKE_BANNER_TEXT,
   bannerForResetReason,
   getResetReason,
-  type Banner,
   type BannerKind,
   type PhaseMarkers,
   type ResetReason,
@@ -26,6 +25,7 @@ const OPPONENT_DELAY_MS = 350
 const STEP_RESET_DELAY_MS = 600
 const NEXT_LINE_DELAY_MS = 1500
 const MISTAKE_BANNER_MS = 1800
+const PREFIX_REPLAY_DELAY_MS = 120
 
 const BANNER_PRESETS: Record<BannerKind, { classes: string; icon: string }> = {
   'hint': {
@@ -52,33 +52,48 @@ const BANNER_PRESETS: Record<BannerKind, { classes: string; icon: string }> = {
 
 const router = useRouter()
 const { $repositories } = useNuxtApp()
-const { selection } = useCurrentSelection()
+const { selection, set: setSelection } = useCurrentSelection()
+const learnState = useLearnState()
 
 const topicIdRef = computed(() => selection.value?.topicId ?? null)
 const { topic, loading, error } = useTopic(topicIdRef)
 
-const session = shallowRef<TrainingSession | null>(null)
-const currentLine = ref<Line | null>(null)
+const {
+  currentLine,
+  parentLine,
+  session,
+  demonstratedSteps,
+  banner,
+  allMastered,
+  introCompletedLineIds,
+} = learnState
+
 const board = ref<InstanceType<typeof ChessBoardComponent> | null>(null)
 const progressApi = shallowRef<ReturnType<typeof useTopicProgress> | null>(null)
-const allMastered = ref(false)
 const isResetting = ref(false)
-const demonstratedSteps = ref<Set<number>>(new Set())
 const hintActive = ref(false)
-const banner = ref<Banner | null>(null)
 let mistakeTimer: ReturnType<typeof setTimeout> | null = null
 
 const bannerPreset = computed(() =>
   banner.value ? BANNER_PRESETS[banner.value.kind] : null,
 )
 
+const currentFamily = computed(() => {
+  const t = topic.value
+  const line = currentLine.value
+  if (!t || !line) return null
+  return t.families.find((f) => f.lines.some((l) => l.id === line.id)) ?? null
+})
+
 const focusedFamilyName = computed(() => {
   const sel = selection.value
   const t = topic.value
   if (!sel || !t) return null
   const focus = sel.focus
-  if (focus.kind !== 'family') return null
-  return t.families.find((f) => f.id === focus.familyId)?.name ?? null
+  if (focus.kind === 'family') {
+    return t.families.find((f) => f.id === focus.familyId)?.name ?? null
+  }
+  return currentFamily.value?.name ?? null
 })
 
 const isOpponentTurn = (line: Line, expectedIndex: number): boolean => {
@@ -94,13 +109,6 @@ const cancelMistakeTimer = (): void => {
   }
 }
 
-/**
- * Freeze/unfreeze the chessboard. During the ~600ms scheduled reset and the
- * opponent's own move the board must be locked so the user can't grab a
- * piece (or an opponent's piece) while the app is finishing a transition.
- * Any move accepted in that window would then race against the pending
- * reset and leave the board visually out of sync with the session state.
- */
 const setBoardLocked = (locked: boolean): void => {
   board.value?.setLocked(locked)
 }
@@ -180,13 +188,15 @@ const playOpponentIfNeeded = async (): Promise<void> => {
   const line = currentLine.value
   if (!s || !line) return
   const state = s.state.value
-  if (state.phase !== 'building' && state.phase !== 'repeating') return
+  if (
+    state.phase !== 'intro'
+    && state.phase !== 'building'
+    && state.phase !== 'repeating'
+  ) return
   if (!isOpponentTurn(line, state.expectedMoveIndex)) return
   const opponentSan = line.sanMoves[state.expectedMoveIndex]
   if (!opponentSan) return
 
-  // Lock the board for the whole opponent "think" window so a user on a
-  // touch screen can't accidentally grab their own piece while we wait.
   setBoardLocked(true)
   await new Promise((r) => setTimeout(r, OPPONENT_DELAY_MS))
   const ok = board.value?.playOpponentSan(opponentSan)
@@ -196,6 +206,30 @@ const playOpponentIfNeeded = async (): Promise<void> => {
   }
   await s.submit(opponentSan)
   setBoardLocked(false)
+}
+
+/**
+ * Auto-play the prefix plies (the parent's moves) onto the board in one go.
+ * Used both when the user first arrives at the line AFTER completing the
+ * intro, and on every subsequent reset – the user should never have to
+ * replay the parent's moves by hand again.
+ */
+const replayPrefixOntoBoard = async (): Promise<void> => {
+  const line = currentLine.value
+  const s = session.value
+  if (!line || !s) return
+  const prefix = s.state.value.prefixPlies
+  if (prefix <= 0) return
+  for (let i = 0; i < prefix; i += 1) {
+    const san = line.sanMoves[i]
+    if (!san) break
+    board.value?.playOpponentSan(san)
+    // Pause between plies so the user can see the setup animate instead of
+    // all pieces jumping into place at once.
+    if (i < prefix - 1) {
+      await new Promise((r) => setTimeout(r, PREFIX_REPLAY_DELAY_MS))
+    }
+  }
 }
 
 const markers = (): PhaseMarkers | null => {
@@ -214,8 +248,6 @@ const resetBoardForNextAttempt = async (
 ): Promise<void> => {
   isResetting.value = true
   clearHintArrow()
-  // The next banner (if any) is computed from the CURRENT session state,
-  // not from stale markers captured before the reset.
   const after = markers()
   if (reason !== null && after !== null) {
     const next = bannerForResetReason(reason, after)
@@ -225,32 +257,60 @@ const resetBoardForNextAttempt = async (
   }
   board.value?.reset()
   await nextTick()
+  // Auto-play the prefix so the user starts the next rep/step FROM the
+  // parent position instead of the empty board.
+  await replayPrefixOntoBoard()
   isResetting.value = false
   await playOpponentIfNeeded()
   showHintIfNewStep()
-  // At this point the board is back at the position the user is expected to
-  // respond from – re-enable their pieces.
   setBoardLocked(false)
 }
 
 const startLine = (t: Topic, line: Line): void => {
   currentLine.value = line
+  const family = t.families.find((f) => f.lines.some((l) => l.id === line.id)) ?? null
+  const progress = progressApi.value?.progress.value ?? []
+  const parent = family ? findParentLine(family, line, progress) : null
+  parentLine.value = parent
+
+  const introAlreadyDone = introCompletedLineIds.value.has(line.id)
+  const hasUsefulPrefix =
+    !!parent
+    && parent.sanMoves.length > 0
+    && parent.sanMoves.length < line.sanMoves.length
+  const prefixPlies = hasUsefulPrefix && introAlreadyDone
+    ? parent!.sanMoves.length
+    : 0
+
   const repo = $repositories.createProgressRepository(t)
   const activityRecorder = {
     topicId: t.id,
     record: (event: Parameters<typeof $repositories.activity.append>[0]) =>
       $repositories.activity.append(event),
   }
-  session.value = createTrainingSession({ line, repo, activityRecorder })
+  session.value = createTrainingSession({ line, repo, activityRecorder, prefixPlies })
   demonstratedSteps.value = new Set()
   clearHint()
-  // Board starts locked; we unlock once the initial opponent reply (if any)
-  // has been applied so the user can't drag a piece during the 50ms mount
-  // window or the OPPONENT_DELAY_MS window that follows.
   setBoardLocked(true)
+
+  // When the user has not yet been introduced to the parent position for
+  // this line we drill the intro FIRST: the session starts in intro phase,
+  // the board starts empty and the user replays the parent moves themselves
+  // before any new-step hint is armed.
+  const runsIntro = hasUsefulPrefix && !introAlreadyDone
+  if (runsIntro && parent) {
+    setBanner(
+      'memory',
+      `Spiele die Eröffnung "${parent.fullName}" bis zur Grundposition`,
+    )
+  }
+
   setTimeout(async () => {
     board.value?.reset()
     await nextTick()
+    if (!runsIntro && prefixPlies > 0) {
+      await replayPrefixOntoBoard()
+    }
     await playOpponentIfNeeded()
     showHintIfNewStep()
     setBoardLocked(false)
@@ -261,6 +321,7 @@ const startNextLine = (t: Topic): void => {
   if (!progressApi.value || !selection.value) {
     allMastered.value = false
     currentLine.value = null
+    parentLine.value = null
     session.value = null
     return
   }
@@ -272,6 +333,7 @@ const startNextLine = (t: Topic): void => {
   if (!next) {
     allMastered.value = true
     currentLine.value = null
+    parentLine.value = null
     session.value = null
     return
   }
@@ -279,21 +341,79 @@ const startNextLine = (t: Topic): void => {
   startLine(t, next)
 }
 
+/**
+ * Replay the moves of the currently running session onto a freshly mounted
+ * board. Used on tab re-entry so the user returns to the exact position
+ * they left – without this the board would be empty while the session
+ * thinks we are already several plies in.
+ */
+const rehydrateBoardFromSession = async (): Promise<void> => {
+  const line = currentLine.value
+  const s = session.value
+  if (!line || !s) return
+  setBoardLocked(true)
+  await nextTick()
+  await new Promise((r) => setTimeout(r, 50))
+  board.value?.reset()
+  await nextTick()
+  const idx = s.state.value.expectedMoveIndex
+  for (let i = 0; i < idx; i += 1) {
+    const san = line.sanMoves[i]
+    if (!san) break
+    board.value?.playOpponentSan(san)
+  }
+  await nextTick()
+  if (isNewStepMove(s.state.value) && !demonstratedSteps.value.has(s.state.value.currentStep)) {
+    const san = s.state.value.expectedSan
+    showHintForExpected(formatBannerForSan('Neuer Zug – probiere ihn aus', san))
+  }
+  setBoardLocked(false)
+}
+
 watch(
   topic,
   async (t) => {
     if (!t) {
       progressApi.value = null
-      currentLine.value = null
-      session.value = null
       return
     }
     progressApi.value = useTopicProgress(t)
     await progressApi.value.refresh()
+    // If there is already a running session for a line that belongs to this
+    // topic AND still matches the current focus, keep it alive and just
+    // rehydrate the board. Otherwise start (or continue) with the next line
+    // the selection points at.
+    const existing = currentLine.value
+    const runningBelongsToTopic = !!existing
+      && t.families.some((f) => f.lines.some((l) => l.id === existing.id))
+    const focusStillPoints = runningBelongsToTopic
+      && !!selectionPointsAt(existing!)
+    if (runningBelongsToTopic && focusStillPoints && session.value) {
+      await rehydrateBoardFromSession()
+      return
+    }
     startNextLine(t)
   },
   { immediate: true },
 )
+
+/**
+ * True if the current `selection` still ultimately resolves to {@link line}.
+ * We compare by line id because a focus of kind 'topic' or 'family' can
+ * legitimately land on many lines – what matters is whether the running
+ * session would be the next pick right now.
+ */
+const selectionPointsAt = (line: Line): boolean => {
+  const t = topic.value
+  const sel = selection.value
+  const progress = progressApi.value?.progress.value ?? []
+  if (!t || !sel) return false
+  if (sel.topicId !== t.id) return false
+  const focus = sel.focus
+  if (focus.kind === 'line' && focus.lineId === line.id) return true
+  const next = selectLineForFocus(t, focus, progress)
+  return next?.id === line.id
+}
 
 watch(
   () => selection.value,
@@ -301,6 +421,16 @@ watch(
     if (!sel || !topic.value || topic.value.id !== sel.topicId) return
     if (!progressApi.value) return
     await progressApi.value.refresh()
+    const existing = currentLine.value
+    if (
+      existing
+      && sel.focus.kind === 'line'
+      && sel.focus.lineId === existing.id
+      && session.value
+    ) {
+      // Same line – nothing to do, keep the session running.
+      return
+    }
     startNextLine(topic.value)
   },
 )
@@ -330,9 +460,6 @@ const handleUserMove = async (san: string): Promise<void> => {
 
   if (result.result === 'wrong') {
     showMistakeBanner()
-    // Freeze the board while we wait to undo the illegal move so the user
-    // can't drag another piece in the meantime and start a second wrong
-    // submission on top of the undo.
     setBoardLocked(true)
     setTimeout(() => {
       board.value?.undoLastMove()
@@ -345,12 +472,14 @@ const handleUserMove = async (san: string): Promise<void> => {
   clearEphemeralBanner()
   if (wasNewStepMove) demonstratedSteps.value.add(before.currentStep)
 
-  // The user move alone may advance the session, OR the transition may only
-  // happen once the forced opponent reply (e.g. 1...Nf6 after 1.e4 in the
-  // Alekhine Defense) has been played. We therefore check BOTH after the user
-  // move and again after the opponent reply before deciding whether to reset
-  // the board and re-arm the new-step hint.
   const afterUser = markers()!
+  // When the intro walkthrough just finished, remember it at module level so
+  // future visits to this same line skip the recap and go straight into the
+  // building phase with the prefix auto-played for us.
+  if (before.phase === 'intro' && afterUser.phase === 'building') {
+    introCompletedLineIds.value = new Set(introCompletedLineIds.value).add(line.id)
+  }
+
   if (afterUser.phase === 'done') {
     finalizeMastery()
     setBoardLocked(true)
@@ -360,10 +489,6 @@ const handleUserMove = async (san: string): Promise<void> => {
 
   const reasonAfterUser = getResetReason(before, afterUser)
   if (reasonAfterUser !== null) {
-    // Lock IMMEDIATELY – the user just played a legal move and is staring
-    // at the end-of-step position for 600ms. Without the lock they can grab
-    // the next piece during the delay and see their move snap back once
-    // the board resets.
     setBoardLocked(true)
     setTimeout(() => resetBoardForNextAttempt(reasonAfterUser), STEP_RESET_DELAY_MS)
     return
@@ -405,6 +530,19 @@ const skipLine = () => {
 const restartLine = () => {
   if (!topic.value || !currentLine.value) return
   startLine(topic.value, currentLine.value)
+}
+
+const goToParent = () => {
+  const t = topic.value
+  const parent = parentLine.value
+  if (!t || !parent) return
+  // The parent is by definition mastered; `exclusive: true` tells
+  // selectLineForFocus to return it as-is instead of auto-advancing past it.
+  setSelection({
+    topicId: t.id,
+    focus: { kind: 'line', lineId: parent.id, exclusive: true },
+  })
+  startLine(t, parent)
 }
 
 const showHelp = (): void => {
@@ -471,27 +609,27 @@ onMounted(() => {
         showMistakeBanner()
         return { result: 'wrong', expected: r.expected }
       }
-      // Mirror the move on the real board so its position stays consistent
-      // with the session – the help button reads from the board's FEN.
       board.value?.playOpponentSan(san)
       clearHintArrow()
       clearEphemeralBanner()
       if (wasNewStepMove) demonstratedSteps.value.add(before.currentStep)
 
+      const line = currentLine.value
       const afterUser = markers()!
+      if (line && before.phase === 'intro' && afterUser.phase === 'building') {
+        introCompletedLineIds.value = new Set(introCompletedLineIds.value).add(line.id)
+      }
+
       if (afterUser.phase === 'done') {
         return { result: 'correct' }
       }
 
-      // The user move alone may not have advanced the phase yet (e.g. after
-      // 1.e4 in the Alekhine, the transition only happens once the opponent's
-      // forced ...Nf6 reply is applied). Reset first if needed, otherwise play
-      // the opponent reply and re-check before re-arming the hint.
       const reasonAfterUser = getResetReason(before, afterUser)
       if (reasonAfterUser !== null) {
         clearHintArrow()
         board.value?.reset()
         await nextTick()
+        await replayPrefixOntoBoard()
         applyResetBannerForBridge(reasonAfterUser)
       } else if (
         currentLine.value
@@ -507,6 +645,7 @@ onMounted(() => {
             clearHintArrow()
             board.value?.reset()
             await nextTick()
+            await replayPrefixOntoBoard()
             applyResetBannerForBridge(reasonAfterOpponent)
           }
         }
@@ -540,6 +679,7 @@ onMounted(() => {
     },
     reset: async () => {
       window.localStorage.removeItem('chess-theory:v1:progress')
+      introCompletedLineIds.value = new Set()
       if (topic.value) startNextLine(topic.value)
     },
     hint: () => ({
@@ -586,6 +726,12 @@ onBeforeUnmount(() => {
       />
 
       <template v-else-if="topic">
+        <!--
+          Heading: drops the standalone "Üben" label and merges the current
+          line's full name into the h1 so the user always knows WHICH line
+          they are drilling. The kicker above keeps the topic + family for
+          context on narrow screens where the h1 may truncate.
+        -->
         <div class="mb-3 flex flex-col gap-3 sm:mb-4 sm:flex-row sm:items-end sm:justify-between">
           <div class="min-w-0">
             <p class="truncate text-xs uppercase tracking-widest text-(--ui-text-muted)">
@@ -594,14 +740,18 @@ onBeforeUnmount(() => {
                 · {{ focusedFamilyName }}
               </template>
             </p>
-            <h1 class="text-xl font-semibold sm:text-3xl">Üben</h1>
+            <h1 class="truncate text-xl font-semibold sm:text-3xl">
+              <template v-if="currentLine">{{ currentLine.fullName }}</template>
+              <template v-else-if="allMastered">Alles gemeistert</template>
+              <template v-else>Lade…</template>
+            </h1>
           </div>
           <div v-if="progressApi" class="w-full sm:w-56">
             <TopicProgress
-              :mastered="progressApi.masteredFamilyCount.value"
-              :total="progressApi.totalFamilyCount.value"
+              :mastered="progressApi.masteredLineCount.value"
+              :total="progressApi.totalLineCount.value"
               size="sm"
-              unit-label="Eröffnungen"
+              unit-label="Zugfolgen"
             />
           </div>
         </div>
@@ -624,22 +774,8 @@ onBeforeUnmount(() => {
             <!--
               The banner slot reserves its own vertical space (min-height) so
               that toggling the hint NEVER shifts the chessboard below it.
-              Before this, showing/hiding the banner changed the board's
-              viewport top which left chessground's cached bounding rect
-              stale; the user would see clicks land on the wrong square until
-              the next window resize. Keeping the slot height stable lets the
-              board's hit-testing stay aligned regardless of hint state.
             -->
             <div class="min-h-[2.5rem]">
-              <!--
-                NO `:key` on the banner div below. Earlier revisions used a
-                key bound to `banner.kind` to force a re-animation on kind
-                change, but `<Transition>` defaults to simultaneous leave+
-                enter, which would put TWO banner divs into layout at once
-                for 150ms and shift the board down by one banner-height.
-                Updating classes/text in place keeps the slot height stable
-                while still animating the initial show/hide.
-              -->
               <Transition
                 enter-active-class="transition duration-150"
                 leave-active-class="transition duration-150"
@@ -686,6 +822,16 @@ onBeforeUnmount(() => {
                 @click="showHelp"
               >
                 Hilfe
+              </UButton>
+              <UButton
+                v-if="parentLine"
+                variant="soft"
+                color="info"
+                icon="i-lucide-corner-up-left"
+                :data-testid="`parent-line-button`"
+                @click="goToParent"
+              >
+                Zurück zu „{{ parentLine.fullName }}"
               </UButton>
               <UButton
                 variant="soft"

@@ -13,6 +13,8 @@ const props = defineProps<Props>()
 
 const phaseLabel = computed(() => {
   switch (props.state.phase) {
+    case 'intro':
+      return 'Grundposition erreichen'
     case 'building':
       return `Aufbau · Schritt ${props.state.currentStep} von ${props.state.totalSteps}`
     case 'repeating':
@@ -24,6 +26,10 @@ const phaseLabel = computed(() => {
 })
 
 const repPercent = computed(() => {
+  if (props.state.phase === 'intro') {
+    const total = Math.max(props.state.prefixPlies, 1)
+    return Math.round((props.state.expectedMoveIndex / total) * 100)
+  }
   if (props.state.phase === 'building') {
     return Math.round(
       (props.state.currentStep / Math.max(props.state.totalSteps, 1)) * 100,

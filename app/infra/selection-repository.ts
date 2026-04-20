@@ -21,7 +21,13 @@ const isValidFocus = (focus: unknown): focus is SelectionFocus => {
     return typeof (f as { familyId?: unknown }).familyId === 'string'
   }
   if (f.kind === 'line') {
-    return typeof (f as { lineId?: unknown }).lineId === 'string'
+    const lineFocus = f as { lineId?: unknown; exclusive?: unknown }
+    if (typeof lineFocus.lineId !== 'string') return false
+    if (
+      typeof lineFocus.exclusive !== 'undefined'
+      && typeof lineFocus.exclusive !== 'boolean'
+    ) return false
+    return true
   }
   return false
 }

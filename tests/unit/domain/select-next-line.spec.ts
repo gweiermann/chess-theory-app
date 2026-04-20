@@ -1,25 +1,29 @@
 import { describe, expect, it } from 'vitest'
 import {
+  findParentLine,
   selectNextLine,
   selectNextLineInFamily,
   selectLineForFocus,
 } from '~/domain/select-next-line'
-import type { Family, Line, LineProgress, Topic } from '~/domain/types'
+import type { Family, Line, LineProgress, Side, Topic } from '~/domain/types'
 
-const line = (id: string): Line => ({
+const line = (id: string, sanMoves: string[] = [], userSide: Side = 'white'): Line => ({
   id,
   eco: '',
   fullName: id,
   pgn: '',
-  sanMoves: [],
-  userSide: 'white',
+  sanMoves,
+  userSide,
 })
 
-const family = (id: string, lineIds: string[]): Family => ({
+const family = (id: string, lines: Line[] | string[]): Family => ({
   id,
   name: id,
+  category: 'opening',
   tree: { label: id, children: [] },
-  lines: lineIds.map(line),
+  lines: (lines as Array<Line | string>).map((l) =>
+    typeof l === 'string' ? line(l) : l,
+  ),
 })
 
 const topic = (families: Family[]): Topic => ({
@@ -122,5 +126,71 @@ describe('selectLineForFocus', () => {
     expect(
       selectLineForFocus(t, { kind: 'family', familyId: 'zzz' }, []),
     ).toBeNull()
+  })
+
+  it('honors an exclusive line focus even when the line is already mastered', () => {
+    const result = selectLineForFocus(
+      t,
+      { kind: 'line', lineId: 'a', exclusive: true },
+      [mastered('a')],
+    )
+    expect(result?.id).toBe('a')
+  })
+})
+
+describe('findParentLine', () => {
+  const parent = line('italian-game', ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'])
+  const classical = line(
+    'italian-classical',
+    ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5'],
+  )
+  const unrelated = line('ruy-lopez', ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5'])
+  const shortChild = line('short', ['e4', 'e5', 'Nf3'])
+  const italian = family('italian', [parent, classical, unrelated, shortChild])
+
+  it('returns the mastered sibling whose moves are a strict prefix of the child', () => {
+    const result = findParentLine(italian, classical, [
+      { lineId: parent.id, status: 'mastered', reps: 5 },
+    ])
+    expect(result?.id).toBe(parent.id)
+  })
+
+  it('ignores candidates that are not a prefix', () => {
+    const result = findParentLine(italian, classical, [
+      { lineId: unrelated.id, status: 'mastered', reps: 5 },
+    ])
+    expect(result).toBeNull()
+  })
+
+  it('ignores candidates that are not mastered yet', () => {
+    const result = findParentLine(italian, classical, [
+      { lineId: parent.id, status: 'in-progress', reps: 1 },
+    ])
+    expect(result).toBeNull()
+  })
+
+  it('prefers the longest mastered prefix when several ancestors qualify', () => {
+    const result = findParentLine(italian, classical, [
+      { lineId: parent.id, status: 'mastered', reps: 5 },
+      { lineId: shortChild.id, status: 'mastered', reps: 5 },
+    ])
+    expect(result?.id).toBe(parent.id)
+  })
+
+  it('does not treat the line itself as its own parent even if mastered', () => {
+    const result = findParentLine(italian, classical, [
+      { lineId: classical.id, status: 'mastered', reps: 5 },
+    ])
+    expect(result).toBeNull()
+  })
+
+  it('requires the same user side so the board orientation stays consistent', () => {
+    const whiteParent = line('w', ['e4', 'e5'], 'white')
+    const blackChild = line('b', ['e4', 'e5', 'Nf3'], 'black')
+    const f = family('f', [whiteParent, blackChild])
+    const result = findParentLine(f, blackChild, [
+      { lineId: whiteParent.id, status: 'mastered', reps: 5 },
+    ])
+    expect(result).toBeNull()
   })
 })

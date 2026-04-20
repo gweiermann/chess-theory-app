@@ -34,6 +34,12 @@ export interface TrainingSessionOptions {
   repo: TrainingProgressRepository
   now?: () => number
   activityRecorder?: TrainingActivityRecorder
+  /**
+   * Number of half-moves that are already mastered through a parent line and
+   * should be auto-played as setup. See {@link startSession} for how this
+   * influences the phase timeline.
+   */
+  prefixPlies?: number
 }
 
 export interface TrainingSession {
@@ -50,8 +56,9 @@ export const createTrainingSession = ({
   repo,
   now = () => Date.now(),
   activityRecorder,
+  prefixPlies = 0,
 }: TrainingSessionOptions): TrainingSession => {
-  const state = ref<SessionState>(startSession(line))
+  const state = ref<SessionState>(startSession(line, prefixPlies))
   const lastFeedback = ref<TrainingFeedback | null>(null)
   const topicId = activityRecorder?.topicId ?? ''
   const recordFn = activityRecorder?.record ?? noopRecord
@@ -166,7 +173,7 @@ export const createTrainingSession = ({
   }
 
   const reset = (): void => {
-    state.value = startSession(line)
+    state.value = startSession(line, prefixPlies)
     lastFeedback.value = null
     mistakesThisRep = 0
     nextRepIndex = 1

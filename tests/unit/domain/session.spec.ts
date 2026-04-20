@@ -125,3 +125,72 @@ describe('session reducer', () => {
     expect(state.expectedSan).toBe('e5')
   })
 })
+
+const giuocoPiano: Line = {
+  id: 'C53-italian-giuoco-piano',
+  eco: 'C53',
+  fullName: 'Italian Game: Giuoco Piano',
+  pgn: '1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3',
+  sanMoves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3'],
+  userSide: 'white',
+}
+
+describe('session with a parent prefix', () => {
+  it('starts in intro phase when a prefix is configured', () => {
+    const state = startSession(giuocoPiano, 5)
+    expect(state.phase).toBe('intro')
+    expect(state.prefixPlies).toBe(5)
+    expect(state.expectedMoveIndex).toBe(0)
+    expect(state.expectedSan).toBe('e4')
+    // Only the extension moves count towards totalSteps – drilling the
+    // parent again would be redundant.
+    expect(state.totalSteps).toBe(1)
+  })
+
+  it('transitions from intro to building once the cursor crosses the prefix', () => {
+    let state = startSession(giuocoPiano, 5)
+    for (const san of ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4']) {
+      state = submitMove(state, san).state
+    }
+    expect(state.phase).toBe('building')
+    expect(state.currentStep).toBe(1)
+    expect(state.expectedMoveIndex).toBe(5)
+    expect(state.expectedSan).toBe('Bc5')
+  })
+
+  it('rejects a wrong intro move without advancing the cursor', () => {
+    const state = startSession(giuocoPiano, 5)
+    const wrong = submitMove(state, 'd4')
+    expect(wrong.result).toBe('wrong')
+    expect(wrong.state.expectedMoveIndex).toBe(0)
+    expect(wrong.state.phase).toBe('intro')
+  })
+
+  it('resets repetitions back to the prefix, not the empty board', () => {
+    let state = startSession(giuocoPiano, 5)
+    for (const san of giuocoPiano.sanMoves) {
+      state = submitMove(state, san).state
+    }
+    expect(state.phase).toBe('repeating')
+    expect(state.expectedMoveIndex).toBe(5)
+    expect(state.expectedSan).toBe('Bc5')
+
+    state = submitMove(state, 'Bc5').state
+    state = submitMove(state, 'c3').state
+    expect(state.repsDone).toBe(1)
+    expect(state.expectedMoveIndex).toBe(5)
+  })
+
+  it('skips the intro entirely when no prefix is provided', () => {
+    const state = startSession(giuocoPiano, 0)
+    expect(state.phase).toBe('building')
+    expect(state.prefixPlies).toBe(0)
+    expect(state.totalSteps).toBe(4)
+  })
+
+  it('clamps unreasonable prefixes to zero so we never get stuck', () => {
+    const state = startSession(giuocoPiano, giuocoPiano.sanMoves.length + 1)
+    expect(state.prefixPlies).toBe(0)
+    expect(state.phase).toBe('building')
+  })
+})

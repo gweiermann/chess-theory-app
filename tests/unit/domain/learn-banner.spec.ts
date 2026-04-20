@@ -46,6 +46,12 @@ describe('getResetReason', () => {
     expect(getResetReason(before, after)).toBeNull()
     expect(shouldResetForTransition(before, after)).toBe(false)
   })
+
+  it('returns "intro-complete" when finishing the parent walkthrough', () => {
+    const before = markers({ phase: 'intro' })
+    const after = markers({ phase: 'building', currentStep: 1 })
+    expect(getResetReason(before, after)).toBe('intro-complete')
+  })
 })
 
 describe('bannerForResetReason', () => {
@@ -89,6 +95,15 @@ describe('bannerForResetReason', () => {
     expect(banner.kind).toBe('motivation')
     expect(banner.text).toContain('Halbzeit')
     expect(banner.text).toContain(`${halfway}/${TARGET_REPS}`)
+  })
+
+  it('announces intro completion with a dedicated setup-complete banner', () => {
+    const banner = bannerForResetReason(
+      'intro-complete',
+      markers({ phase: 'building', currentStep: 1 }),
+    )
+    expect(banner.kind).toBe('setup-complete')
+    expect(banner.text).toContain('Grundposition')
   })
 
   it('does NOT show the motivation banner on reps adjacent to halfway', () => {

@@ -90,7 +90,9 @@ test('clicking "Weiter lernen" sets the selection and opens /learn with the boar
   await page.getByRole('button', { name: 'Weiter lernen' }).click()
   await expect(page).toHaveURL(/\/learn$/)
 
-  await expect(page.getByRole('heading', { name: 'Üben' })).toBeVisible()
+  // The learn page now uses the current line's full name as its h1 instead
+  // of the stand-alone "Üben" label, so assert on the mounted chess board
+  // and the session HUD's phase text instead.
   await expect(page.locator('cg-board')).toBeVisible()
   await expect(page.locator('text=Aufbau')).toBeVisible()
 })
@@ -556,5 +558,7 @@ test('manually picking a specific line in a family routes to /learn for that lin
   await firstRow.getByRole('button', { name: 'Üben' }).click()
 
   await expect(page).toHaveURL(/\/learn$/)
-  await expect(page.getByRole('heading', { name: 'Üben' })).toBeVisible()
+  // The h1 now carries the selected line's full name rather than a stand
+  // alone "Üben" label, so we assert on the mounted board instead.
+  await expect(page.locator('cg-board')).toBeVisible()
 })
