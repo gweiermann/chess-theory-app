@@ -80,17 +80,52 @@ const resolveSanToSquares = (
   }
 }
 
+const refreshBounds = (): void => {
+  // Chessground memoises the board's DOMRect and only invalidates that cache
+  // on its own ResizeObserver (cg-wrap size), document `scroll` and window
+  // `resize`. When a sibling above the board (e.g. the hint banner) appears
+  // or disappears, the board's viewport POSITION shifts without its SIZE
+  // changing, so chessground keeps hit-testing clicks against the old rect
+  // and every click lands on a square offset by the banner's height. The
+  // only reliable user-visible fix was to resize the window. Synthesising a
+  // `scroll` event on `document` triggers chessground's own invalidation
+  // path (see chessground/dist/events.js) without reaching into library
+  // internals or side-effecting anything else in this app (we have no
+  // custom document-level scroll listeners).
+  if (typeof document === 'undefined') return
+  document.dispatchEvent(new Event('scroll'))
+}
+
 const drawHintForSan = (san: string): boolean => {
   const api = apiRef.value
   if (!api) return false
   const squares = resolveSanToSquares(api.getFen(), san)
   if (!squares) return false
-  api.drawMove(squares.from, squares.to, 'paleBlue')
+  // Chessground diffs rendered shapes by a hash; on the very first mount the
+  // board's bounds are still settling, so a single setShapes([shape]) call
+  // can update state without actually appending the arrow to the SVG. Clearing
+  // first and scheduling the shape on the next frame guarantees the arrow
+  // gets drawn both on initial mount and after opponent replies.
+  api.setShapes([])
+  const draw = () => {
+    api.setShapes([{ orig: squares.from, dest: squares.to, brush: 'paleBlue' }])
+    // The hint arrow almost always appears together with the hint banner
+    // above the board, which may have just (re-)shifted the board's viewport
+    // position. Invalidate chessground's cached rect on the same frame so
+    // subsequent clicks hit the correct square.
+    refreshBounds()
+  }
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(draw)
+  } else {
+    draw()
+  }
   return true
 }
 
 const clearHints = (): void => {
   apiRef.value?.setShapes([])
+  refreshBounds()
 }
 
 defineExpose({
@@ -100,6 +135,7 @@ defineExpose({
   undoLastMove,
   drawHintForSan,
   clearHints,
+  refreshBounds,
 })
 
 watch(
@@ -134,7 +170,22 @@ onBeforeUnmount(() => {
   margin-inline: auto;
 }
 
+/*
+ * vue3-chessboard ships with an internal landscape media query that forces
+ *   .main-wrap { width: 90vh; max-width: 700px }
+ * which on desktop viewports makes the board 700px wide and overflows our
+ * grid column (the board then visually overlaps the "Wiederholung" side
+ * card). We re-assert that the whole board tree stays inside our shell
+ * regardless of the viewport orientation.
+ */
+.chessboard-shell :deep(.main-wrap) {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+}
+
 .chessboard-shell :deep(.main-board) {
+  width: 100%;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.4);

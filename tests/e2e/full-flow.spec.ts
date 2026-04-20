@@ -140,6 +140,136 @@ test('the board automatically hints the new move of a fresh step and clears it a
   expect(hintAfter.demonstratedSteps).toContain(1)
 })
 
+test('auto-hint re-arms with the NEW expected move after the opponent replies on a fresh step', async ({
+  page,
+}) => {
+  // Pin the test to the Italian Game so the sequence is deterministic:
+  //   1. e4  e5   2. Nf3  Nc6   3. Bc4
+  // With three user-side steps we can exercise the "after the opponent replies
+  // on step 2, the hint must point at Nf3, not still at e4" path.
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn$/)
+  await page.goto('/learn?e2e=1')
+  await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+
+  await page.waitForFunction(() => {
+    const line = window.__chessTheory!.currentLine() as { id: string } | null
+    return !!line && line.id.includes('italian-game')
+  })
+
+  // At the very first step the auto-hint points at the first user move and the
+  // banner includes the SAN so it is actionable on small screens.
+  await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
+  const firstSan = await page.evaluate(
+    () => (window.__chessTheory!.state() as { expectedSan: string }).expectedSan,
+  )
+  expect(firstSan).toBe('e4')
+  const firstBanner = await page.evaluate(() => window.__chessTheory!.hint().banner)
+  expect(firstBanner).toBe(`Neuer Zug – probiere ihn aus: ${firstSan}`)
+
+  // Finish step 1 so the session moves to step 2, then replay the first move.
+  // After the opponent auto-replies, the hint banner MUST advance to the NEW
+  // expected move (Nf3), never stay on the previous one (e4).
+  await page.evaluate(async () => {
+    await window.__chessTheory!.submit('e4')
+  })
+  await page.waitForFunction(() => {
+    const s = window.__chessTheory!.state() as {
+      currentStep: number
+      expectedMoveIndex: number
+    } | null
+    return !!s && s.currentStep === 2 && s.expectedMoveIndex === 0
+  })
+  await page.evaluate(async () => {
+    await window.__chessTheory!.submit('e4')
+  })
+
+  await page.waitForFunction(() => {
+    const s = window.__chessTheory!.state() as {
+      expectedMoveIndex: number
+      currentStep: number
+      expectedSan: string | null
+    } | null
+    return !!s && s.currentStep === 2 && s.expectedMoveIndex === 2 && s.expectedSan === 'Nf3'
+  })
+
+  await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
+  const newBanner = await page.evaluate(() => window.__chessTheory!.hint().banner)
+  expect(newBanner).toBe('Neuer Zug – probiere ihn aus: Nf3')
+})
+
+test('a one-step line (Alekhine Defense, 1.e4 Nf6) resets after the forced opponent reply and completes all 10 repetitions', async ({
+  page,
+}) => {
+  // Alekhine has sanMoves=['e4','Nf6'] and userSide='white', i.e. exactly ONE
+  // user-side step. The transition building → repeating only happens AFTER the
+  // opponent's forced ...Nf6 reply is played, not after the user's 1.e4 itself.
+  // This is the flow that was previously leaving the board stuck on a mid-line
+  // position with no hint.
+  await page.goto('/openings/e4/family/alekhine-defense')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn$/)
+  await page.goto('/learn?e2e=1')
+  await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+
+  await page.waitForFunction(() => {
+    const line = window.__chessTheory!.currentLine() as { id: string } | null
+    return !!line && line.id === 'B02-alekhine-defense'
+  })
+
+  await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
+  const initial = await page.evaluate(() => window.__chessTheory!.hint().banner)
+  expect(initial).toBe('Neuer Zug – probiere ihn aus: e4')
+
+  // Finish step 1 + the forced opponent reply. The session must now be in the
+  // repeating phase waiting for the user's e4 again from the INITIAL position.
+  await page.evaluate(async () => {
+    await window.__chessTheory!.submit('e4')
+  })
+
+  await page.waitForFunction(() => {
+    const s = window.__chessTheory!.state() as {
+      phase: string
+      expectedMoveIndex: number
+      expectedSan: string | null
+    } | null
+    return !!s
+      && s.phase === 'repeating'
+      && s.expectedMoveIndex === 0
+      && s.expectedSan === 'e4'
+  })
+
+  // Drive the full repetition loop and assert the line reaches "done". Without
+  // the reset-after-opponent fix, the board would still be on 1.e4 Nf6 and the
+  // very first e4 of rep #1 would be rejected, so this would hang/time out.
+  let safety = 0
+  while (safety < 200) {
+    safety += 1
+    const state = await page.evaluate(() => window.__chessTheory!.state() as {
+      phase: string
+      expectedSan: string | null
+    } | null)
+    if (!state) break
+    if (state.phase === 'done') break
+    const next = state.expectedSan
+    if (!next) break
+    await page.evaluate(async (san) => {
+      await window.__chessTheory!.submit(san)
+    }, next)
+  }
+
+  await page.waitForFunction(
+    () => {
+      const s = window.__chessTheory!.state() as { phase: string; repsDone: number } | null
+      return s?.phase === 'done' && s.repsDone === 10
+    },
+    { timeout: 10_000 },
+  )
+})
+
 test('the help button is exposed and reveals the next move on demand at session start', async ({
   page,
 }) => {
@@ -152,13 +282,84 @@ test('the help button is exposed and reveals the next move on demand at session 
   // The Help button is rendered on the page.
   await expect(page.getByRole('button', { name: 'Hilfe' })).toBeVisible()
 
+  // Let the auto-hint settle first so the subsequent requestHelp() reliably
+  // replaces the banner instead of racing with the initial showHintIfNewStep()
+  // that startLine() schedules on mount.
+  await page.waitForFunction(() => {
+    const h = window.__chessTheory!.hint()
+    return h.active === true && typeof h.banner === 'string' && h.banner.startsWith('Neuer Zug')
+  })
+
   // Even if the auto-hint is already active, requesting help is idempotent and
   // continues to return true while there is an expected move on the board.
   const requested = await page.evaluate(() => window.__chessTheory!.requestHelp())
   expect(requested).toBe(true)
+  await page.waitForFunction(() => {
+    const h = window.__chessTheory!.hint()
+    return h.active === true && typeof h.banner === 'string' && h.banner.startsWith('Hilfe')
+  })
   const after = await page.evaluate(() => window.__chessTheory!.hint())
   expect(after.active).toBe(true)
   expect(after.banner).toContain('Hilfe')
+  const expectedSan = await page.evaluate(
+    () => (window.__chessTheory!.state() as { expectedSan: string }).expectedSan,
+  )
+  expect(after.banner).toBe(`Hilfe – nächster Zug: ${expectedSan}`)
+})
+
+test('the chessboard stays at a stable viewport position whether or not the hint banner is visible (click-offset regression)', async ({
+  page,
+}) => {
+  // When a sibling above the board (the hint banner) toggles its presence in
+  // the DOM flow, chessground's cached board rect goes stale and every click
+  // lands on a square offset by the banner's height until the next window
+  // resize. The page now reserves a fixed slot for the banner so the board
+  // never moves. This test pins that contract: the board's bounding rect at
+  // both desktop AND mobile must be identical whether the banner is active
+  // (auto-hint after start / Help requested) or inactive (after submitting
+  // the expected move, before the next hint arms).
+  const measureBoard = async () => {
+    return await page.evaluate(() => {
+      const el = document.querySelector('.chessboard-shell') as HTMLElement | null
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      return { top: r.top, left: r.left, width: r.width, height: r.height }
+    })
+  }
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1440, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/openings/e4/family/italian-game')
+    const firstRow = page.locator('ul > li').first()
+    await firstRow.getByRole('button', { name: 'Üben' }).click()
+    await page.waitForURL(/\/learn$/)
+    await page.goto('/learn?e2e=1')
+    await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+
+    // Initial auto-hint: banner active.
+    await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
+    const withBanner = await measureBoard()
+    expect(withBanner).not.toBeNull()
+
+    // Submit the expected move; the hint clears, and for a brief window no
+    // banner is drawn before the next step's auto-hint arms. During that
+    // window the board must NOT have shifted vertically.
+    await page.evaluate(async () => {
+      const expected = (window.__chessTheory!.state() as { expectedSan: string }).expectedSan
+      await window.__chessTheory!.submit(expected)
+    })
+    await page.waitForFunction(() => window.__chessTheory!.hint().active === false)
+    const withoutBanner = await measureBoard()
+
+    expect(withoutBanner).not.toBeNull()
+    expect(withoutBanner!.top).toBeCloseTo(withBanner!.top, 0)
+    expect(withoutBanner!.left).toBeCloseTo(withBanner!.left, 0)
+    expect(withoutBanner!.width).toBeCloseTo(withBanner!.width, 0)
+    expect(withoutBanner!.height).toBeCloseTo(withBanner!.height, 0)
+  }
 })
 
 test('the activity log records session_started + mistake events in localStorage as the user plays', async ({
@@ -186,6 +387,132 @@ test('the activity log records session_started + mistake events in localStorage 
 
   expect(events.some((e) => e.type === 'session_started')).toBe(true)
   expect(events.some((e) => e.type === 'mistake')).toBe(true)
+})
+
+test('a wrong move flashes a red mistake banner that auto-clears', async ({ page }) => {
+  // The banner uses DOM + a typed kind accessible via the e2e bridge, so we
+  // assert both the bridge-level `bannerKind` contract AND that a visibly
+  // distinct red element is rendered at the top of the board area.
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn$/)
+  await page.goto('/learn?e2e=1')
+  await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+  await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
+
+  await page.evaluate(async () => {
+    await window.__chessTheory!.submit('Zz9')
+  })
+
+  await page.waitForFunction(() => window.__chessTheory!.hint().bannerKind === 'mistake')
+  const mistake = await page.evaluate(() => window.__chessTheory!.hint())
+  expect(mistake.banner).toBe('Falscher Zug – nochmal versuchen')
+  expect(mistake.bannerKind).toBe('mistake')
+  await expect(page.locator('[data-banner-kind="mistake"]')).toBeVisible()
+})
+
+test('advancing to the next building step shows a blue memory banner above the board', async ({
+  page,
+}) => {
+  // Italian Game has 3 user-side steps (e4, Nf3, Bc4). After completing step 1
+  // the board resets and the user is expected to replay previously learned
+  // moves before the next new-step hint arms. That "from memory" moment gets
+  // its own blue banner so the user understands why the board was cleared.
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn$/)
+  await page.goto('/learn?e2e=1')
+  await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+
+  await page.waitForFunction(() => {
+    const line = window.__chessTheory!.currentLine() as { id: string } | null
+    return !!line && line.id.includes('italian-game')
+  })
+  await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
+
+  await page.evaluate(async () => {
+    await window.__chessTheory!.submit('e4')
+  })
+
+  await page.waitForFunction(() => window.__chessTheory!.hint().bannerKind === 'memory')
+  const memory = await page.evaluate(() => window.__chessTheory!.hint())
+  expect(memory.bannerKind).toBe('memory')
+  expect(memory.banner).toBe('Spiele 1 Zug aus dem Gedächtnis')
+  await expect(page.locator('[data-banner-kind="memory"]')).toBeVisible()
+})
+
+test('finishing the building phase shows a green setup-complete banner before the 10 reps', async ({
+  page,
+}) => {
+  // Alekhine has exactly one user-side step so the very first correctly played
+  // move + its forced opponent reply takes the session straight from building
+  // → repeating. The transition must be announced with a celebratory banner.
+  await page.goto('/openings/e4/family/alekhine-defense')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn$/)
+  await page.goto('/learn?e2e=1')
+  await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+  await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
+
+  await page.evaluate(async () => {
+    await window.__chessTheory!.submit('e4')
+  })
+
+  await page.waitForFunction(() => window.__chessTheory!.hint().bannerKind === 'setup-complete')
+  const setup = await page.evaluate(() => window.__chessTheory!.hint())
+  expect(setup.bannerKind).toBe('setup-complete')
+  expect(setup.banner).toContain('Aufbau geschafft')
+  await expect(page.locator('[data-banner-kind="setup-complete"]')).toBeVisible()
+})
+
+test('the halfway repetition is announced with a green motivation banner', async ({ page }) => {
+  // Drive the Alekhine line (1.e4 Nf6) through its 10-rep loop and assert that
+  // at the exact moment the rep counter crosses 5/10 we surface a motivational
+  // banner so the user feels progress. The memory banner is the default for
+  // subsequent reps; halfway is the single deviation.
+  await page.goto('/openings/e4/family/alekhine-defense')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn$/)
+  await page.goto('/learn?e2e=1')
+  await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+  await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
+
+  // Enter the repeating phase (this sets a setup-complete banner first).
+  await page.evaluate(async () => {
+    await window.__chessTheory!.submit('e4')
+  })
+  await page.waitForFunction(() => {
+    const s = window.__chessTheory!.state() as { phase: string; repsDone: number } | null
+    return s?.phase === 'repeating' && s.repsDone === 0
+  })
+
+  // Drive reps 1..5. After rep 5 completes the halfway motivation fires.
+  let safety = 0
+  while (safety < 60) {
+    safety += 1
+    const s = await page.evaluate(() => window.__chessTheory!.state() as {
+      phase: string
+      repsDone: number
+      expectedSan: string | null
+    } | null)
+    if (!s || s.phase === 'done') break
+    if (s.phase === 'repeating' && s.repsDone >= 5) break
+    const next = s.expectedSan
+    if (!next) break
+    await page.evaluate(async (san) => {
+      await window.__chessTheory!.submit(san)
+    }, next)
+  }
+
+  await page.waitForFunction(() => window.__chessTheory!.hint().bannerKind === 'motivation')
+  const motivation = await page.evaluate(() => window.__chessTheory!.hint())
+  expect(motivation.bannerKind).toBe('motivation')
+  expect(motivation.banner).toContain('Halbzeit')
+  await expect(page.locator('[data-banner-kind="motivation"]')).toBeVisible()
 })
 
 test('manually picking a specific line in a family routes to /learn for that line', async ({
