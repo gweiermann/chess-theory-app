@@ -311,19 +311,40 @@ const resetBoardForNextAttempt = async (
 
 const startLine = (t: Topic, line: Line): void => {
   currentLine.value = line
-  const family = t.families.find((f) => f.lines.some((l) => l.id === line.id)) ?? null
   const progress = progressApi.value?.progress.value ?? []
-  const parent = family ? findParentLine(family, line, progress) : null
+  const parent = findParentLine(t, line, progress)
   parentLine.value = parent
 
   const introAlreadyDone = introCompletedLineIds.value.has(line.id)
-  const hasUsefulPrefix =
+  const hasRealParent =
     !!parent
     && parent.sanMoves.length > 0
     && parent.sanMoves.length < line.sanMoves.length
-  const prefixPlies = hasUsefulPrefix && introAlreadyDone
+
+  // Treat the topic's own first move (e.g. "1.e4") as an implicit parent:
+  // every e4 line shares that opening move, so drilling it on every fresh
+  // line would be pointless. We synthesize a prefix of length 1 and skip
+  // the intro walkthrough so the move is just auto-played onto the board
+  // before the user starts on the actual new material. No real parent line
+  // is attached (the "Zurück zu" button requires a real line to navigate
+  // back to).
+  const hasVirtualFirstMoveParent =
+    !hasRealParent
+    && line.sanMoves.length > 1
+    && line.sanMoves[0] === t.firstMove
+
+  const prefixPlies = hasRealParent
     ? parent!.sanMoves.length
-    : 0
+    : hasVirtualFirstMoveParent
+      ? 1
+      : 0
+
+  // Run the intro walkthrough only for REAL parents on their first visit.
+  // The virtual first-move parent never warrants an intro – the user has
+  // either just opened the app or already played countless lines starting
+  // with this exact move.
+  const runsIntro = hasRealParent && !introAlreadyDone
+  const skipIntro = !runsIntro
 
   const repo = $repositories.createProgressRepository(t)
   const activityRecorder = {
@@ -331,16 +352,17 @@ const startLine = (t: Topic, line: Line): void => {
     record: (event: Parameters<typeof $repositories.activity.append>[0]) =>
       $repositories.activity.append(event),
   }
-  session.value = createTrainingSession({ line, repo, activityRecorder, prefixPlies })
+  session.value = createTrainingSession({
+    line,
+    repo,
+    activityRecorder,
+    prefixPlies,
+    skipIntro,
+  })
   demonstratedSteps.value = new Set()
   clearHint()
   setBoardLocked(true)
 
-  // When the user has not yet been introduced to the parent position for
-  // this line we drill the intro FIRST: the session starts in intro phase,
-  // the board starts empty and the user replays the parent moves themselves
-  // before any new-step hint is armed.
-  const runsIntro = hasUsefulPrefix && !introAlreadyDone
   if (runsIntro && parent) {
     setBanner(
       'memory',

@@ -40,6 +40,13 @@ export interface TrainingSessionOptions {
    * influences the phase timeline.
    */
   prefixPlies?: number
+  /**
+   * Skip the intro walkthrough and jump straight into the building phase at
+   * the end of the prefix. Used when the user has already completed the
+   * intro in this app session, or when the prefix is the topic's own first
+   * move (which we consider implicitly learned).
+   */
+  skipIntro?: boolean
 }
 
 export interface TrainingSession {
@@ -57,8 +64,9 @@ export const createTrainingSession = ({
   now = () => Date.now(),
   activityRecorder,
   prefixPlies = 0,
+  skipIntro = false,
 }: TrainingSessionOptions): TrainingSession => {
-  const state = ref<SessionState>(startSession(line, prefixPlies))
+  const state = ref<SessionState>(startSession(line, prefixPlies, { skipIntro }))
   const lastFeedback = ref<TrainingFeedback | null>(null)
   const topicId = activityRecorder?.topicId ?? ''
   const recordFn = activityRecorder?.record ?? noopRecord
@@ -173,7 +181,7 @@ export const createTrainingSession = ({
   }
 
   const reset = (): void => {
-    state.value = startSession(line, prefixPlies)
+    state.value = startSession(line, prefixPlies, { skipIntro })
     lastFeedback.value = null
     mistakesThisRep = 0
     nextRepIndex = 1

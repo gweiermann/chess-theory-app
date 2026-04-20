@@ -174,8 +174,12 @@ test('auto-hint re-arms with the NEW expected move after the opponent replies on
 }) => {
   // Pin the test to the Italian Game so the sequence is deterministic:
   //   1. e4  e5   2. Nf3  Nc6   3. Bc4
-  // With three user-side steps we can exercise the "after the opponent replies
-  // on step 2, the hint must point at Nf3, not still at e4" path.
+  // The topic's first move (e4) is considered implicitly learned – it is
+  // auto-played as a prefix rather than drilled – so the first user-side
+  // step is Nf3 and step 2 is Bc4. After completing step 1 the board resets
+  // to the prefix position, the opponent auto-replies with Nc6, and the
+  // hint banner MUST advance to the NEW expected move (Bc4), never stay
+  // on the previous one (Nf3).
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
@@ -194,25 +198,27 @@ test('auto-hint re-arms with the NEW expected move after the opponent replies on
   const firstSan = await page.evaluate(
     () => (window.__chessTheory!.state() as { expectedSan: string }).expectedSan,
   )
-  expect(firstSan).toBe('e4')
+  expect(firstSan).toBe('Nf3')
   const firstBanner = await page.evaluate(() => window.__chessTheory!.hint().banner)
   expect(firstBanner).toBe(`Neuer Zug – probiere ihn aus: ${firstSan}`)
 
-  // Finish step 1 so the session moves to step 2, then replay the first move.
-  // After the opponent auto-replies, the hint banner MUST advance to the NEW
-  // expected move (Nf3), never stay on the previous one (e4).
+  // Finish step 1 (Nf3). The session resets to the prefix position (after
+  // e4, auto-played) and waits for the opponent to play e5. After the user
+  // replays Nf3 from memory the opponent auto-plays Nc6, and the hint must
+  // now point at the NEW expected move (Bc4).
   await page.evaluate(async () => {
-    await window.__chessTheory!.submit('e4')
+    await window.__chessTheory!.submit('Nf3')
   })
   await page.waitForFunction(() => {
     const s = window.__chessTheory!.state() as {
       currentStep: number
       expectedMoveIndex: number
     } | null
-    return !!s && s.currentStep === 2 && s.expectedMoveIndex === 0
+    return !!s && s.currentStep === 2 && s.expectedMoveIndex === 1
   })
   await page.evaluate(async () => {
-    await window.__chessTheory!.submit('e4')
+    await window.__chessTheory!.submit('e5')
+    await window.__chessTheory!.submit('Nf3')
   })
 
   await page.waitForFunction(() => {
@@ -221,12 +227,12 @@ test('auto-hint re-arms with the NEW expected move after the opponent replies on
       currentStep: number
       expectedSan: string | null
     } | null
-    return !!s && s.currentStep === 2 && s.expectedMoveIndex === 2 && s.expectedSan === 'Nf3'
+    return !!s && s.currentStep === 2 && s.expectedMoveIndex === 4 && s.expectedSan === 'Bc4'
   })
 
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
   const newBanner = await page.evaluate(() => window.__chessTheory!.hint().banner)
-  expect(newBanner).toBe('Neuer Zug – probiere ihn aus: Nf3')
+  expect(newBanner).toBe('Neuer Zug – probiere ihn aus: Bc4')
 })
 
 test('a one-step line (Alekhine Defense, 1.e4 Nf6) drives from the opponent-first build step through every repetition to done', async ({
@@ -234,11 +240,12 @@ test('a one-step line (Alekhine Defense, 1.e4 Nf6) drives from the opponent-firs
 }) => {
   // Alekhine has sanMoves=['e4','Nf6'] and userSide='black' (defenses are
   // played from black's perspective so white opens and the user answers).
-  // There is exactly ONE user-side step (Nf6). The opponent's ...e4 is
-  // auto-played on startLine so the hint banner arms with the user's first
-  // move directly. After Nf6, the session transitions building → repeating
-  // and the full rep loop must run cleanly to phase=done with the target
-  // rep count – regressions in the reset-after-opponent or "Accepted"
+  // The topic's first move (e4) is treated as an implicit prefix (auto-
+  // played on startLine AND on every reset), so there is exactly ONE
+  // user-side step (Nf6). After Nf6, the session transitions
+  // building → repeating with expectedMoveIndex back at the prefix; the
+  // full rep loop must run cleanly to phase=done with the target rep
+  // count – regressions in the reset-after-opponent or "Accepted"
   // family-merge logic would hang or mis-route the first rep move.
   await page.goto('/openings/e4/family/alekhine-defense')
   const firstRow = page.locator('ul > li').first()
@@ -257,8 +264,9 @@ test('a one-step line (Alekhine Defense, 1.e4 Nf6) drives from the opponent-firs
   expect(initial).toBe('Neuer Zug – probiere ihn aus: Nf6')
 
   // Finish step 1 (Nf6). The session must now be in the repeating phase
-  // waiting for the opponent's ...e4 again from the INITIAL position – which
-  // the app plays itself, leaving the user back on Nf6 for rep #1.
+  // waiting from the prefix position (after white's e4, auto-played on
+  // reset). That leaves expectedMoveIndex at prefixPlies=1 waiting for the
+  // user's Nf6 for rep #1.
   await page.evaluate(async () => {
     await window.__chessTheory!.submit('Nf6')
   })
@@ -268,7 +276,7 @@ test('a one-step line (Alekhine Defense, 1.e4 Nf6) drives from the opponent-firs
       phase: string
       expectedMoveIndex: number
     } | null
-    return !!s && s.phase === 'repeating' && s.expectedMoveIndex === 0
+    return !!s && s.phase === 'repeating' && s.expectedMoveIndex === 1
   })
 
   let safety = 0
@@ -441,10 +449,13 @@ test('a wrong move flashes a red mistake banner that auto-clears', async ({ page
 test('advancing to the next building step shows a blue memory banner above the board', async ({
   page,
 }) => {
-  // Italian Game has 3 user-side steps (e4, Nf3, Bc4). After completing step 1
-  // the board resets and the user is expected to replay previously learned
-  // moves before the next new-step hint arms. That "from memory" moment gets
-  // its own blue banner so the user understands why the board was cleared.
+  // Italian Game has 3 user-side moves (e4, Nf3, Bc4). With the topic's
+  // first move (e4) auto-played as an implicit prefix, the user's
+  // drillable steps are Nf3 (step 1) and Bc4 (step 2). After completing
+  // step 1 the board resets to the prefix position and the user is
+  // expected to replay previously learned moves before the next
+  // new-step hint arms. That "from memory" moment gets its own blue
+  // banner so the user understands why the board was cleared.
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
@@ -459,7 +470,7 @@ test('advancing to the next building step shows a blue memory banner above the b
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
 
   await page.evaluate(async () => {
-    await window.__chessTheory!.submit('e4')
+    await window.__chessTheory!.submit('Nf3')
   })
 
   await page.waitForFunction(() => window.__chessTheory!.hint().bannerKind === 'memory')

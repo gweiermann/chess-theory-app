@@ -81,17 +81,37 @@ const clampPrefix = (line: Line, prefixPlies: number): number => {
   return Math.floor(prefixPlies)
 }
 
-export const startSession = (line: Line, prefixPlies = 0): SessionState => {
+export interface StartSessionOptions {
+  /**
+   * Skip the intro walkthrough and jump directly into `building` with the
+   * cursor already past the prefix. Used when the parent has been drilled
+   * (either as a real mastered sibling or as the implicit topic-first-move
+   * parent) and the prefix should just be auto-played onto the board
+   * instead of being re-typed by the user.
+   */
+  skipIntro?: boolean
+}
+
+export const startSession = (
+  line: Line,
+  prefixPlies = 0,
+  options: StartSessionOptions = {},
+): SessionState => {
   const safePrefix = clampPrefix(line, prefixPlies)
   const totalSteps = userMoveIndices(line, safePrefix).length
   const hasWork = line.sanMoves.length > 0 && totalSteps > 0
+  const wantsIntro = safePrefix > 0 && !options.skipIntro
   const phase: SessionPhase = !hasWork
     ? 'done'
-    : safePrefix > 0
+    : wantsIntro
       ? 'intro'
       : 'building'
 
-  const startIndex = phase === 'building' ? 0 : phase === 'intro' ? 0 : line.sanMoves.length
+  const startIndex = phase === 'done'
+    ? line.sanMoves.length
+    : wantsIntro
+      ? 0
+      : safePrefix
 
   return {
     line,

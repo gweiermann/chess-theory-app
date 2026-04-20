@@ -193,4 +193,21 @@ describe('session with a parent prefix', () => {
     expect(state.prefixPlies).toBe(0)
     expect(state.phase).toBe('building')
   })
+
+  it('skipIntro jumps directly into building at the prefix position', () => {
+    const state = startSession(giuocoPiano, 5, { skipIntro: true })
+    expect(state.phase).toBe('building')
+    expect(state.prefixPlies).toBe(5)
+    expect(state.currentStep).toBe(1)
+    expect(state.expectedMoveIndex).toBe(5)
+    expect(state.expectedSan).toBe('Bc5')
+    expect(state.totalSteps).toBe(1)
+  })
+
+  it('skipIntro has no effect when no prefix is configured', () => {
+    const state = startSession(giuocoPiano, 0, { skipIntro: true })
+    expect(state.phase).toBe('building')
+    expect(state.prefixPlies).toBe(0)
+    expect(state.expectedMoveIndex).toBe(0)
+  })
 })

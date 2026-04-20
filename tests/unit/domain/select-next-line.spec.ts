@@ -146,31 +146,32 @@ describe('findParentLine', () => {
   )
   const unrelated = line('ruy-lopez', ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5'])
   const shortChild = line('short', ['e4', 'e5', 'Nf3'])
-  const italian = family('italian', [parent, classical, unrelated, shortChild])
+  const italianFamily = family('italian', [parent, classical, unrelated, shortChild])
+  const italianTopic = topic([italianFamily])
 
-  it('returns the mastered sibling whose moves are a strict prefix of the child', () => {
-    const result = findParentLine(italian, classical, [
+  it('returns the mastered line whose moves are a strict prefix of the child', () => {
+    const result = findParentLine(italianTopic, classical, [
       { lineId: parent.id, status: 'mastered', reps: 5 },
     ])
     expect(result?.id).toBe(parent.id)
   })
 
   it('ignores candidates that are not a prefix', () => {
-    const result = findParentLine(italian, classical, [
+    const result = findParentLine(italianTopic, classical, [
       { lineId: unrelated.id, status: 'mastered', reps: 5 },
     ])
     expect(result).toBeNull()
   })
 
   it('ignores candidates that are not mastered yet', () => {
-    const result = findParentLine(italian, classical, [
+    const result = findParentLine(italianTopic, classical, [
       { lineId: parent.id, status: 'in-progress', reps: 1 },
     ])
     expect(result).toBeNull()
   })
 
   it('prefers the longest mastered prefix when several ancestors qualify', () => {
-    const result = findParentLine(italian, classical, [
+    const result = findParentLine(italianTopic, classical, [
       { lineId: parent.id, status: 'mastered', reps: 5 },
       { lineId: shortChild.id, status: 'mastered', reps: 5 },
     ])
@@ -178,7 +179,7 @@ describe('findParentLine', () => {
   })
 
   it('does not treat the line itself as its own parent even if mastered', () => {
-    const result = findParentLine(italian, classical, [
+    const result = findParentLine(italianTopic, classical, [
       { lineId: classical.id, status: 'mastered', reps: 5 },
     ])
     expect(result).toBeNull()
@@ -187,10 +188,23 @@ describe('findParentLine', () => {
   it('requires the same user side so the board orientation stays consistent', () => {
     const whiteParent = line('w', ['e4', 'e5'], 'white')
     const blackChild = line('b', ['e4', 'e5', 'Nf3'], 'black')
-    const f = family('f', [whiteParent, blackChild])
-    const result = findParentLine(f, blackChild, [
+    const t = topic([family('f', [whiteParent, blackChild])])
+    const result = findParentLine(t, blackChild, [
       { lineId: whiteParent.id, status: 'mastered', reps: 5 },
     ])
     expect(result).toBeNull()
+  })
+
+  it('finds mastered parents across family boundaries', () => {
+    const kingsPawn = line('kings-pawn', ['e4', 'e5'])
+    const italianDeep = line('italian-deep', ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'])
+    const t = topic([
+      family('kings-pawn-game', [kingsPawn]),
+      family('italian', [italianDeep]),
+    ])
+    const result = findParentLine(t, italianDeep, [
+      { lineId: kingsPawn.id, status: 'mastered', reps: 5 },
+    ])
+    expect(result?.id).toBe(kingsPawn.id)
   })
 })

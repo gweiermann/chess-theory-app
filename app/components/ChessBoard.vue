@@ -26,9 +26,19 @@ const apiRef = ref<BoardApi | null>(null)
 const pendingTimeouts = new Set<ReturnType<typeof setTimeout>>()
 let suppressEmitForSan: string | null = null
 
+/*
+ * vue3-chessboard captures the boardConfig OBJECT REFERENCE at mount time
+ * and re-applies it on every `resetBoard()` (see BoardApi#resetBoard). If
+ * we froze the orientation at setup we would be stuck with the very first
+ * line's orientation – every board reset would flip the board back to
+ * white even when we're now drilling a defense. We therefore keep this
+ * object's fields live: the watchers below mutate it in place whenever
+ * the props change. Chessground then picks up the latest orientation /
+ * playerColor on the next reset.
+ */
 const boardConfig = {
   orientation: props.orientation,
-  movable: { color: props.playerColor },
+  movable: { color: props.playerColor as Side | undefined },
   animation: { enabled: true, duration: 200 },
 }
 
@@ -161,16 +171,20 @@ defineExpose({
 watch(
   () => props.orientation,
   (next) => {
+    boardConfig.orientation = next
     apiRef.value?.setConfig({ orientation: next })
   },
 )
 
 // When the current line switches (e.g. building-phase user is black), keep
 // the movable side in sync with the prop. Without this the board would stay
-// locked to whoever the first mounted line happened to be.
+// locked to whoever the first mounted line happened to be. We also mutate
+// boardConfig.movable so that chessground's internal `resetBoard()` (which
+// re-applies the stored boardConfig object) picks up the latest color.
 watch(
   () => props.playerColor,
   (next) => {
+    boardConfig.movable = { color: next }
     apiRef.value?.setConfig({ movable: { color: next } })
   },
 )

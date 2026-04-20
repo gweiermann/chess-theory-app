@@ -96,45 +96,51 @@ export const selectLineForFocus = (
 }
 
 /**
- * Find the longest mastered sibling in the same family whose move list is a
- * strict prefix of {@link line}'s moves. Used to treat already-learned moves
- * as "setup" so that drilling a child line (e.g. "Italian Game: Classical
+ * Find the longest mastered line in the whole topic whose moves are a strict
+ * prefix of {@link line}'s moves. Used to treat already-learned moves as
+ * "setup" so that drilling a child line (e.g. "Italian Game: Classical
  * Variation") does not force the user to re-learn the parent's moves.
  *
+ * Parent lookup is topic-wide (not family-scoped) because the same move
+ * sequence can lead into different families – e.g. "1.e4 e5" is the prefix
+ * for both the Italian Game family and the Ruy Lopez family, and mastering
+ * the short "King's Pawn Game" line in its own family should still count
+ * as a parent for any deeper e4/e5 variation the user drills next.
+ *
  * Requirements:
- *   - Same family (same entry point, same tree), otherwise the two lines
- *     would never share a prefix semantically.
- *   - Same `userSide` – a defense parent for a non-defense child would put
- *     the user on the wrong side of the board.
+ *   - Same `userSide` – a white parent for a defense (black) child would
+ *     put the user on the wrong side of the board.
  *   - Mastered – we only strip moves the user has already proven.
  *   - Strict prefix – equal move counts are siblings, not parents.
  */
 export const findParentLine = (
-  family: Family,
+  topic: Topic,
   line: Line,
   progress: readonly LineProgress[],
 ): Line | null => {
   const mastered = masteredIds(progress)
   let best: Line | null = null
 
-  for (const candidate of family.lines) {
-    if (candidate.id === line.id) continue
-    if (!mastered.has(candidate.id)) continue
-    if (candidate.userSide !== line.userSide) continue
-    if (candidate.sanMoves.length === 0) continue
-    if (candidate.sanMoves.length >= line.sanMoves.length) continue
+  for (const family of topic.families) {
+    for (const candidate of family.lines) {
+      if (candidate.id === line.id) continue
+      if (!mastered.has(candidate.id)) continue
+      if (candidate.userSide !== line.userSide) continue
+      if (candidate.sanMoves.length === 0) continue
+      if (candidate.sanMoves.length >= line.sanMoves.length) continue
 
-    let isPrefix = true
-    for (let i = 0; i < candidate.sanMoves.length; i += 1) {
-      if (candidate.sanMoves[i] !== line.sanMoves[i]) {
-        isPrefix = false
-        break
+      let isPrefix = true
+      for (let i = 0; i < candidate.sanMoves.length; i += 1) {
+        if (candidate.sanMoves[i] !== line.sanMoves[i]) {
+          isPrefix = false
+          break
+        }
       }
-    }
-    if (!isPrefix) continue
+      if (!isPrefix) continue
 
-    if (!best || candidate.sanMoves.length > best.sanMoves.length) {
-      best = candidate
+      if (!best || candidate.sanMoves.length > best.sanMoves.length) {
+        best = candidate
+      }
     }
   }
 
