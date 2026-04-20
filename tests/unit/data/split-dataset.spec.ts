@@ -21,7 +21,7 @@ describe('splitDataset', () => {
     expect(split.index.topics).toHaveLength(ds.topics.length)
 
     const e4Summary = split.index.topics.find((t) => t.id === 'e4')!
-    expect(e4Summary.label).toBe('1.e4')
+    expect(e4Summary.label).toBe('e4')
     expect(e4Summary.firstMove).toBe('e4')
     expect(e4Summary.totalFamilies).toBe(2)
     expect(e4Summary.totalLines).toBe(3)

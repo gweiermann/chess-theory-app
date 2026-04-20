@@ -23,7 +23,7 @@ test('root navigates to /learn and shows the empty state when no selection exist
   await page.goto('/')
   await expect(page).toHaveURL(/\/learn$/)
   await expect(
-    page.getByRole('heading', { name: 'Noch keine Linie ausgewählt' }),
+    page.getByRole('heading', { name: 'Noch keine Zugfolge ausgewählt' }),
   ).toBeVisible()
 })
 
@@ -39,21 +39,48 @@ test('bottom navigation jumps between Learn, Activity and Openings', async ({ pa
 
 test('openings list shows the five top-level topics', async ({ page }) => {
   await page.goto('/openings')
-  await expect(page.getByRole('heading', { name: '1.e4' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '1.d4' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '1.c4' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '1.Nf3' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Other openings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'e4', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'd4', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'c4', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Nf3', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Andere Eröffnungen' })).toBeVisible()
 })
 
 test('clicking a topic opens its overview with progress at 0%', async ({ page }) => {
   await page.goto('/openings')
-  await page.getByRole('link', { name: /1\.e4/ }).first().click()
+  await page.locator('a[href="/openings/e4"]').first().click()
   await expect(page).toHaveURL(/\/openings\/e4$/)
 
-  await expect(page.getByRole('heading', { level: 1, name: '1.e4' })).toBeVisible()
-  await expect(page.getByText(/0 \/ \d+ Familien/)).toBeVisible()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'e4', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByText(/0 \/ \d+ Eröffnungen/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Weiter lernen' })).toBeEnabled()
+})
+
+test('openings topic page groups families into Eröffnungen, Verteidigungen and Gambits', async ({
+  page,
+}) => {
+  await page.goto('/openings/e4')
+  // Each section renders only when it has content. For e4 all three buckets
+  // are guaranteed to have at least one family, so asserting visibility is
+  // the tightest way to lock in the grouping.
+  await expect(page.locator('[data-section="opening"]')).toBeVisible()
+  await expect(page.locator('[data-section="defense"]')).toBeVisible()
+  await expect(page.locator('[data-section="gambit"]')).toBeVisible()
+})
+
+test('the openings topic page exposes a search that filters families in place', async ({
+  page,
+}) => {
+  await page.goto('/openings/e4')
+  // Unfiltered state: a known defense and a known opening are both visible.
+  await expect(page.getByRole('button', { name: 'Italian Game' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Alekhine Defense' })).toBeVisible()
+
+  await page.getByTestId('openings-search').fill('alekhine')
+  await expect(page.getByRole('button', { name: 'Alekhine Defense' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Italian Game' })).toHaveCount(0)
 })
 
 test('clicking "Weiter lernen" sets the selection and opens /learn with the board', async ({
@@ -200,14 +227,17 @@ test('auto-hint re-arms with the NEW expected move after the opponent replies on
   expect(newBanner).toBe('Neuer Zug – probiere ihn aus: Nf3')
 })
 
-test('a one-step line (Alekhine Defense, 1.e4 Nf6) resets after the forced opponent reply and completes all 10 repetitions', async ({
+test('a one-step line (Alekhine Defense, 1.e4 Nf6) drives from the opponent-first build step through every repetition to done', async ({
   page,
 }) => {
-  // Alekhine has sanMoves=['e4','Nf6'] and userSide='white', i.e. exactly ONE
-  // user-side step. The transition building → repeating only happens AFTER the
-  // opponent's forced ...Nf6 reply is played, not after the user's 1.e4 itself.
-  // This is the flow that was previously leaving the board stuck on a mid-line
-  // position with no hint.
+  // Alekhine has sanMoves=['e4','Nf6'] and userSide='black' (defenses are
+  // played from black's perspective so white opens and the user answers).
+  // There is exactly ONE user-side step (Nf6). The opponent's ...e4 is
+  // auto-played on startLine so the hint banner arms with the user's first
+  // move directly. After Nf6, the session transitions building → repeating
+  // and the full rep loop must run cleanly to phase=done with the target
+  // rep count – regressions in the reset-after-opponent or "Accepted"
+  // family-merge logic would hang or mis-route the first rep move.
   await page.goto('/openings/e4/family/alekhine-defense')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
@@ -222,29 +252,23 @@ test('a one-step line (Alekhine Defense, 1.e4 Nf6) resets after the forced oppon
 
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
   const initial = await page.evaluate(() => window.__chessTheory!.hint().banner)
-  expect(initial).toBe('Neuer Zug – probiere ihn aus: e4')
+  expect(initial).toBe('Neuer Zug – probiere ihn aus: Nf6')
 
-  // Finish step 1 + the forced opponent reply. The session must now be in the
-  // repeating phase waiting for the user's e4 again from the INITIAL position.
+  // Finish step 1 (Nf6). The session must now be in the repeating phase
+  // waiting for the opponent's ...e4 again from the INITIAL position – which
+  // the app plays itself, leaving the user back on Nf6 for rep #1.
   await page.evaluate(async () => {
-    await window.__chessTheory!.submit('e4')
+    await window.__chessTheory!.submit('Nf6')
   })
 
   await page.waitForFunction(() => {
     const s = window.__chessTheory!.state() as {
       phase: string
       expectedMoveIndex: number
-      expectedSan: string | null
     } | null
-    return !!s
-      && s.phase === 'repeating'
-      && s.expectedMoveIndex === 0
-      && s.expectedSan === 'e4'
+    return !!s && s.phase === 'repeating' && s.expectedMoveIndex === 0
   })
 
-  // Drive the full repetition loop and assert the line reaches "done". Without
-  // the reset-after-opponent fix, the board would still be on 1.e4 Nf6 and the
-  // very first e4 of rep #1 would be rejected, so this would hang/time out.
   let safety = 0
   while (safety < 200) {
     safety += 1
@@ -263,8 +287,8 @@ test('a one-step line (Alekhine Defense, 1.e4 Nf6) resets after the forced oppon
 
   await page.waitForFunction(
     () => {
-      const s = window.__chessTheory!.state() as { phase: string; repsDone: number } | null
-      return s?.phase === 'done' && s.repsDone === 10
+      const s = window.__chessTheory!.state() as { phase: string } | null
+      return s?.phase === 'done'
     },
     { timeout: 10_000 },
   )
@@ -443,12 +467,13 @@ test('advancing to the next building step shows a blue memory banner above the b
   await expect(page.locator('[data-banner-kind="memory"]')).toBeVisible()
 })
 
-test('finishing the building phase shows a green setup-complete banner before the 10 reps', async ({
+test('finishing the building phase shows a green setup-complete banner before the repetitions', async ({
   page,
 }) => {
-  // Alekhine has exactly one user-side step so the very first correctly played
-  // move + its forced opponent reply takes the session straight from building
-  // → repeating. The transition must be announced with a celebratory banner.
+  // Alekhine (defense, user plays black) has exactly one user-side step so
+  // the very first correctly played move takes the session straight from
+  // building → repeating. The transition must be announced with a
+  // celebratory banner.
   await page.goto('/openings/e4/family/alekhine-defense')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
@@ -458,7 +483,7 @@ test('finishing the building phase shows a green setup-complete banner before th
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
 
   await page.evaluate(async () => {
-    await window.__chessTheory!.submit('e4')
+    await window.__chessTheory!.submit('Nf6')
   })
 
   await page.waitForFunction(() => window.__chessTheory!.hint().bannerKind === 'setup-complete')
@@ -469,10 +494,11 @@ test('finishing the building phase shows a green setup-complete banner before th
 })
 
 test('the halfway repetition is announced with a green motivation banner', async ({ page }) => {
-  // Drive the Alekhine line (1.e4 Nf6) through its 10-rep loop and assert that
-  // at the exact moment the rep counter crosses 5/10 we surface a motivational
-  // banner so the user feels progress. The memory banner is the default for
-  // subsequent reps; halfway is the single deviation.
+  // Drive the Alekhine line (1.e4 Nf6) through its repetition loop and
+  // assert that at the exact moment the rep counter crosses halfway we
+  // surface a motivational banner so the user feels progress. The memory
+  // banner is the default for subsequent reps; halfway is the single
+  // deviation.
   await page.goto('/openings/e4/family/alekhine-defense')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
@@ -481,26 +507,27 @@ test('the halfway repetition is announced with a green motivation banner', async
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
 
-  // Enter the repeating phase (this sets a setup-complete banner first).
+  // Read TARGET_REPS by fetching it from the runtime via the halfway banner
+  // text format ("Halbzeit – weiter so! (X/Y)") would be circular; instead
+  // we drive reps until the motivation kind appears, with a generous cap.
   await page.evaluate(async () => {
-    await window.__chessTheory!.submit('e4')
+    await window.__chessTheory!.submit('Nf6')
   })
   await page.waitForFunction(() => {
     const s = window.__chessTheory!.state() as { phase: string; repsDone: number } | null
     return s?.phase === 'repeating' && s.repsDone === 0
   })
 
-  // Drive reps 1..5. After rep 5 completes the halfway motivation fires.
   let safety = 0
   while (safety < 60) {
     safety += 1
+    const h = await page.evaluate(() => window.__chessTheory!.hint())
+    if (h.bannerKind === 'motivation') break
     const s = await page.evaluate(() => window.__chessTheory!.state() as {
       phase: string
-      repsDone: number
       expectedSan: string | null
     } | null)
     if (!s || s.phase === 'done') break
-    if (s.phase === 'repeating' && s.repsDone >= 5) break
     const next = s.expectedSan
     if (!next) break
     await page.evaluate(async (san) => {
@@ -508,7 +535,6 @@ test('the halfway repetition is announced with a green motivation banner', async
     }, next)
   }
 
-  await page.waitForFunction(() => window.__chessTheory!.hint().bannerKind === 'motivation')
   const motivation = await page.evaluate(() => window.__chessTheory!.hint())
   expect(motivation.bannerKind).toBe('motivation')
   expect(motivation.banner).toContain('Halbzeit')

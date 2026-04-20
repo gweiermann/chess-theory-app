@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildLineId,
+  classifyFamily,
+  firstMoveTopicId,
+  isDefenseFamily,
+  normalizeFamilyName,
   parsePgnToSan,
   splitFamilyAndPath,
-  firstMoveTopicId,
-  buildLineId,
+  userSideForLine,
   userSideForPgn,
 } from '~/domain/line'
 
@@ -106,5 +110,75 @@ describe('userSideForPgn', () => {
   it('returns white when the first san is a white move', () => {
     expect(userSideForPgn(['e4'])).toBe('white')
     expect(userSideForPgn(['Nf3', 'Nf6'])).toBe('white')
+  })
+})
+
+describe('normalizeFamilyName', () => {
+  it('strips a trailing " Accepted" suffix', () => {
+    expect(normalizeFamilyName('Center Game Accepted')).toBe('Center Game')
+    expect(normalizeFamilyName("King's Gambit Accepted")).toBe("King's Gambit")
+  })
+
+  it('strips a trailing " Declined" suffix', () => {
+    expect(normalizeFamilyName('Danish Gambit Declined')).toBe('Danish Gambit')
+  })
+
+  it('leaves unrelated names unchanged', () => {
+    expect(normalizeFamilyName('Italian Game')).toBe('Italian Game')
+    expect(normalizeFamilyName('Alekhine Defense')).toBe('Alekhine Defense')
+  })
+
+  it('only strips the suffix as a full trailing word (not substring hits)', () => {
+    expect(normalizeFamilyName('Acceptedly Named Opening')).toBe(
+      'Acceptedly Named Opening',
+    )
+  })
+})
+
+describe('isDefenseFamily', () => {
+  it('is true for families that end in "Defense"', () => {
+    expect(isDefenseFamily('Alekhine Defense')).toBe(true)
+    expect(isDefenseFamily('Sicilian Defense')).toBe(true)
+    expect(isDefenseFamily('French Defense')).toBe(true)
+  })
+
+  it('is false for openings, attacks and gambits', () => {
+    expect(isDefenseFamily('Italian Game')).toBe(false)
+    expect(isDefenseFamily("King's Gambit")).toBe(false)
+    expect(isDefenseFamily('Bongcloud Attack')).toBe(false)
+    expect(isDefenseFamily('Ruy Lopez')).toBe(false)
+  })
+})
+
+describe('userSideForLine', () => {
+  it('returns black for defenses (so white moves first visually)', () => {
+    expect(userSideForLine('Alekhine Defense', ['e4', 'Nf6'])).toBe('black')
+    expect(userSideForLine('Sicilian Defense', ['e4', 'c5'])).toBe('black')
+  })
+
+  it('returns white for openings, attacks and gambits', () => {
+    expect(userSideForLine('Italian Game', ['e4', 'e5'])).toBe('white')
+    expect(userSideForLine("King's Gambit", ['e4', 'e5', 'f4'])).toBe('white')
+    expect(userSideForLine('Bongcloud Attack', ['e4'])).toBe('white')
+  })
+})
+
+describe('classifyFamily', () => {
+  it('classifies defenses first, even if the name also contains "gambit"', () => {
+    expect(classifyFamily('Sicilian Defense')).toBe('defense')
+    expect(classifyFamily('Alekhine Defense')).toBe('defense')
+  })
+
+  it('classifies gambits by the "gambit"/"countergambit" keyword', () => {
+    expect(classifyFamily("King's Gambit")).toBe('gambit')
+    expect(classifyFamily('Danish Gambit')).toBe('gambit')
+    expect(classifyFamily('Blumenfeld Countergambit')).toBe('gambit')
+  })
+
+  it('classifies everything else as opening', () => {
+    expect(classifyFamily('Italian Game')).toBe('opening')
+    expect(classifyFamily('Ruy Lopez')).toBe('opening')
+    expect(classifyFamily('Bongcloud Attack')).toBe('opening')
+    expect(classifyFamily('English Opening')).toBe('opening')
   })
 })

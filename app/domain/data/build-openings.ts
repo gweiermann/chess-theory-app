@@ -1,8 +1,10 @@
 import {
   buildLineId,
+  classifyFamily,
+  normalizeFamilyName,
   parsePgnToSan,
   splitFamilyAndPath,
-  userSideForPgn,
+  userSideForLine,
 } from '../line'
 import { buildFamilyTree } from '../tree'
 import type {
@@ -14,12 +16,17 @@ import type {
 
 export const TOPIC_ORDER = ['e4', 'd4', 'c4', 'Nf3', 'other'] as const
 
+/**
+ * Labels shown on the /openings overview. The "1." prefix was dropped on
+ * user request – the first move alone is unambiguous and reads more
+ * cleanly in the grid.
+ */
 export const TOPIC_LABELS: Record<string, string> = {
-  e4: '1.e4',
-  d4: '1.d4',
-  c4: '1.c4',
-  Nf3: '1.Nf3',
-  other: 'Other openings',
+  e4: 'e4',
+  d4: 'd4',
+  c4: 'c4',
+  Nf3: 'Nf3',
+  other: 'Andere Eröffnungen',
 }
 
 interface Row {
@@ -84,7 +91,12 @@ export const buildDatasetFromTsv = (tsv: string): OpeningsDataset => {
     const sanMoves = parsePgnToSan(row.pgn)
     if (sanMoves.length === 0) continue
     const topicId = topicIdForFirstSan(sanMoves[0])
-    const { family } = splitFamilyAndPath(row.fullName)
+    const { family: rawFamily } = splitFamilyAndPath(row.fullName)
+    // Fold "<x> Accepted"/"<x> Declined" into "<x>" so the two branches
+    // live in the same UI group. The side is derived from the normalized
+    // name so a merged gambit keeps white-to-move even if its accepted
+    // sibling never matched the "Defense" heuristic on its own.
+    const family = normalizeFamilyName(rawFamily)
 
     const line: Line = {
       id: buildLineId(row.eco, row.fullName),
@@ -92,7 +104,7 @@ export const buildDatasetFromTsv = (tsv: string): OpeningsDataset => {
       fullName: row.fullName,
       pgn: row.pgn,
       sanMoves,
-      userSide: userSideForPgn(sanMoves),
+      userSide: userSideForLine(family, sanMoves),
     }
 
     let families = linesByTopic.get(topicId)
@@ -126,6 +138,7 @@ export const buildDatasetFromTsv = (tsv: string): OpeningsDataset => {
       return {
         id: slug(name),
         name,
+        category: classifyFamily(name),
         lines,
         tree: buildFamilyTree(lines),
       }

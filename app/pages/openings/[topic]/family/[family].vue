@@ -64,7 +64,7 @@ const learnFamily = () => {
       <span v-else>Zurück</span>
     </NuxtLink>
 
-    <div v-if="loading && !topic" class="text-(--ui-text-muted)">Lade Familie…</div>
+    <div v-if="loading && !topic" class="text-(--ui-text-muted)">Lade Eröffnung…</div>
     <UAlert
       v-else-if="error"
       color="error"
@@ -76,7 +76,7 @@ const learnFamily = () => {
       v-else-if="!family"
       color="warning"
       variant="soft"
-      :title="`Unbekannte Familie: ${familyId}`"
+      :title="`Unbekannte Eröffnung: ${familyId}`"
     />
 
     <template v-else>
@@ -86,7 +86,7 @@ const learnFamily = () => {
         </p>
         <h1 class="text-2xl font-semibold sm:text-4xl">{{ family.name }}</h1>
         <p class="text-sm text-(--ui-text-muted) sm:text-base">
-          {{ family.lines.length }} Linien
+          {{ family.lines.length }} Zugfolgen
         </p>
         <UButton
           color="primary"
@@ -97,7 +97,7 @@ const learnFamily = () => {
           :disabled="progressApi?.isFamilyMastered(family)"
           @click="learnFamily"
         >
-          Familie üben
+          Eröffnung üben
         </UButton>
       </header>
 

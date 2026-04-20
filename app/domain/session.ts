@@ -1,6 +1,6 @@
 import type { Line } from './types'
 
-export const TARGET_REPS = 10
+export const TARGET_REPS = 5
 
 export type SessionPhase = 'building' | 'repeating' | 'done'
 

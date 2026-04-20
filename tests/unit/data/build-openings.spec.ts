@@ -6,6 +6,9 @@ const tsv = [
   'C50\tItalian Game\t1. e4 e5 2. Nf3 Nc6 3. Bc4',
   'C53\tItalian Game: Classical Variation\t1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5',
   'B00\tNimzowitsch Defense\t1. e4 Nc6',
+  'C30\tKing\'s Gambit\t1. e4 e5 2. f4',
+  'C33\tKing\'s Gambit Accepted: Bishop\'s Gambit\t1. e4 e5 2. f4 exf4 3. Bc4',
+  'C30\tKing\'s Gambit Declined: Classical Variation\t1. e4 e5 2. f4 Bc5',
   'D00\tQueen\'s Pawn Game\t1. d4',
   'A04\tZukertort Opening\t1. Nf3',
   'A00\tVan\'t Kruijs Opening\t1. e3',
@@ -78,5 +81,40 @@ describe('buildDatasetFromTsv', () => {
   it('stamps generatedAt with an ISO timestamp', () => {
     const ds = buildDatasetFromTsv(tsv)
     expect(() => new Date(ds.generatedAt).toISOString()).not.toThrow()
+  })
+
+  it("folds '<x> Accepted'/'<x> Declined' into the parent family", () => {
+    const ds = buildDatasetFromTsv(tsv)
+    const e4 = ds.topics.find((t) => t.id === 'e4')!
+    const gambit = e4.families.find((f) => f.name === "King's Gambit")
+    expect(gambit, "expected merged 'King's Gambit' family").toBeDefined()
+    // Three raw TSV rows – base, Accepted, Declined – all land here.
+    expect(gambit!.lines).toHaveLength(3)
+    // The lines themselves keep their original Accepted/Declined names so
+    // the user can tell the branches apart inside the merged family.
+    const fullNames = gambit!.lines.map((l) => l.fullName).sort()
+    expect(fullNames).toEqual([
+      "King's Gambit",
+      "King's Gambit Accepted: Bishop's Gambit",
+      "King's Gambit Declined: Classical Variation",
+    ])
+  })
+
+  it('tags each family with a category (opening / defense / gambit)', () => {
+    const ds = buildDatasetFromTsv(tsv)
+    const e4 = ds.topics.find((t) => t.id === 'e4')!
+    const byName = new Map(e4.families.map((f) => [f.name, f.category]))
+    expect(byName.get('Italian Game')).toBe('opening')
+    expect(byName.get('Nimzowitsch Defense')).toBe('defense')
+    expect(byName.get("King's Gambit")).toBe('gambit')
+  })
+
+  it('flips the user to black for defenses so white opens the drill', () => {
+    const ds = buildDatasetFromTsv(tsv)
+    const e4 = ds.topics.find((t) => t.id === 'e4')!
+    const nimzo = e4.families.find((f) => f.name === 'Nimzowitsch Defense')!
+    expect(nimzo.lines.every((l) => l.userSide === 'black')).toBe(true)
+    const italian = e4.families.find((f) => f.name === 'Italian Game')!
+    expect(italian.lines.every((l) => l.userSide === 'white')).toBe(true)
   })
 })

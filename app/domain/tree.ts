@@ -1,4 +1,4 @@
-import { splitFamilyAndPath } from './line'
+import { normalizeFamilyName, splitFamilyAndPath } from './line'
 import type { Line, TreeNode } from './types'
 
 const findOrCreateChild = (parent: TreeNode, label: string): TreeNode => {
@@ -9,6 +9,34 @@ const findOrCreateChild = (parent: TreeNode, label: string): TreeNode => {
   return next
 }
 
+interface ExpandedParts {
+  canonicalFamily: string
+  path: string[]
+}
+
+/**
+ * Split a line's full name into the canonical family (after merging
+ * Accepted/Declined siblings) plus the variation path that sits below it.
+ * The stripped "Accepted"/"Declined" token is re-attached as the first
+ * segment of the path so the tree still shows the user which branch the
+ * line belongs to, e.g. Center Game → Accepted → Variation. Without this
+ * prefix, "Center Game Accepted" and "Center Game Accepted: Foo" would
+ * both collapse onto a single "Center Game" node and their line-ids would
+ * fight for the same slot.
+ */
+const expand = (line: Line): ExpandedParts => {
+  const { family, path } = splitFamilyAndPath(line.fullName)
+  const canonical = normalizeFamilyName(family)
+  if (canonical === family) {
+    return { canonicalFamily: canonical, path }
+  }
+  const branch = family.slice(canonical.length).trim()
+  return {
+    canonicalFamily: canonical,
+    path: branch ? [branch, ...path] : path,
+  }
+}
+
 export const buildFamilyTree = (lines: readonly Line[]): TreeNode => {
   if (lines.length === 0) {
     throw new Error('buildFamilyTree requires at least one line')
@@ -16,14 +44,14 @@ export const buildFamilyTree = (lines: readonly Line[]): TreeNode => {
 
   const parsed = lines.map((line) => ({
     line,
-    parts: splitFamilyAndPath(line.fullName),
+    parts: expand(line),
   }))
 
-  const familyName = parsed[0]!.parts.family
+  const familyName = parsed[0]!.parts.canonicalFamily
   for (const { parts } of parsed) {
-    if (parts.family !== familyName) {
+    if (parts.canonicalFamily !== familyName) {
       throw new Error(
-        `buildFamilyTree expects a single family but got "${familyName}" and "${parts.family}"`,
+        `buildFamilyTree expects a single family but got "${familyName}" and "${parts.canonicalFamily}"`,
       )
     }
   }

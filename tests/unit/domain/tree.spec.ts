@@ -95,4 +95,23 @@ describe('buildFamilyTree', () => {
   it('throws on empty input', () => {
     expect(() => buildFamilyTree([])).toThrow()
   })
+
+  it('folds "Accepted"/"Declined" siblings into the canonical family', () => {
+    const tree = buildFamilyTree([
+      line('base', "King's Gambit", ['e4', 'e5', 'f4']),
+      line('acc', "King's Gambit Accepted", ['e4', 'e5', 'f4', 'exf4']),
+      line('dec', "King's Gambit Declined", ['e4', 'e5', 'f4', 'Bc5']),
+      line('accVar', "King's Gambit Accepted: Schurig Gambit", [
+        'e4', 'e5', 'f4',
+      ]),
+    ])
+
+    expect(tree.label).toBe("King's Gambit")
+    expect(tree.lineId).toBe('base')
+    const childLabels = tree.children.map((c) => c.label).sort()
+    expect(childLabels).toEqual(['Accepted', 'Declined'])
+    const accepted = tree.children.find((c) => c.label === 'Accepted')!
+    expect(accepted.lineId).toBe('acc')
+    expect(accepted.children.map((c) => c.label)).toEqual(['Schurig Gambit'])
+  })
 })

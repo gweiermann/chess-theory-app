@@ -73,7 +73,7 @@ const feedbackTone = computed(() => {
       </div>
 
       <div v-if="state.phase === 'done'" class="text-success font-medium">
-        Linie gemeistert. Weiter zur nächsten.
+        Zugfolge gemeistert. Weiter zur nächsten.
       </div>
 
       <div

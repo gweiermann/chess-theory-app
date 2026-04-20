@@ -41,8 +41,8 @@ const hasEntries = computed(() => entries.value.length > 0)
       </p>
       <h1 class="text-2xl font-semibold sm:text-4xl">Zuletzt geübt</h1>
       <p class="text-sm text-(--ui-text-muted) sm:text-base">
-        Wechsle schnell zwischen den Linien, an denen du zuletzt gearbeitet
-        hast.
+        Wechsle schnell zwischen den Zugfolgen, an denen du zuletzt
+        gearbeitet hast.
       </p>
     </header>
 
@@ -55,7 +55,7 @@ const hasEntries = computed(() => entries.value.length > 0)
       variant="soft"
       icon="i-lucide-history"
       title="Noch nichts geübt"
-      description="Sobald du eine Linie übst, taucht sie hier auf."
+      description="Sobald du eine Zugfolge übst, taucht sie hier auf."
     />
 
     <ul v-else class="overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg)">
@@ -78,7 +78,7 @@ const hasEntries = computed(() => entries.value.length > 0)
               {{ entry.line.fullName }}
             </span>
             <span v-else class="text-(--ui-text-muted)">
-              Linie nicht mehr verfügbar
+              Zugfolge nicht mehr verfügbar
             </span>
           </p>
           <dl class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-(--ui-text-muted)">

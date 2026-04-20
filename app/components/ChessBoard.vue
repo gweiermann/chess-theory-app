@@ -62,6 +62,25 @@ const setPlayerColor = (color: Side): void => {
   apiRef.value?.setConfig({ movable: { color } })
 }
 
+/**
+ * Fully lock or unlock the board's movable state. Locking sets the movable
+ * color to `undefined` in chessground which disables ALL drag/click
+ * interactions, including moves for the current side. Used to freeze the
+ * board during the ~600ms pre-reset delay and during opponent replies so
+ * the user can't snag a piece they're not supposed to touch, get confused
+ * when it snaps back, or accidentally submit a move that would then race
+ * against the scheduled reset.
+ */
+const setLocked = (locked: boolean): void => {
+  const api = apiRef.value
+  if (!api) return
+  if (locked) {
+    api.setConfig({ movable: { color: undefined } })
+  } else {
+    api.setConfig({ movable: { color: props.playerColor } })
+  }
+}
+
 const undoLastMove = (): void => {
   apiRef.value?.undoLastMove()
 }
@@ -132,6 +151,7 @@ defineExpose({
   playOpponentSan,
   reset,
   setPlayerColor,
+  setLocked,
   undoLastMove,
   drawHintForSan,
   clearHints,
@@ -142,6 +162,16 @@ watch(
   () => props.orientation,
   (next) => {
     apiRef.value?.setConfig({ orientation: next })
+  },
+)
+
+// When the current line switches (e.g. building-phase user is black), keep
+// the movable side in sync with the prop. Without this the board would stay
+// locked to whoever the first mounted line happened to be.
+watch(
+  () => props.playerColor,
+  (next) => {
+    apiRef.value?.setConfig({ movable: { color: next } })
   },
 )
 

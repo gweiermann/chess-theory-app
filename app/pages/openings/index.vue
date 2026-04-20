@@ -74,11 +74,11 @@ const masteryFor = (summary: TopicSummary): FamilyMastery =>
         Eröffnungen
       </p>
       <h1 class="text-2xl font-semibold sm:text-4xl">
-        Wähle eine Eröffnung
+        Wähle eine Gruppe
       </h1>
       <p class="max-w-2xl text-sm text-(--ui-text-muted) sm:text-base">
-        Tipp auf eine Eröffnung, um die Familien zu sehen und gezielt eine
-        Linie auszuwählen, die du als Nächstes üben möchtest.
+        Tipp auf eine Gruppe, um die Eröffnungen zu sehen und gezielt eine
+        Zugfolge auszuwählen, die du als Nächstes üben möchtest.
       </p>
     </header>
 
@@ -110,20 +110,20 @@ const masteryFor = (summary: TopicSummary): FamilyMastery =>
             <div class="flex items-center justify-between gap-2">
               <h2 class="text-xl font-bold sm:text-2xl">{{ topic.label }}</h2>
               <UBadge variant="soft" color="neutral">
-                {{ topic.totalFamilies }} Familien
+                {{ topic.totalFamilies }} Eröffnungen
               </UBadge>
             </div>
           </template>
 
           <div class="space-y-3">
             <p class="text-sm text-(--ui-text-muted)">
-              {{ topic.totalLines }} Linien
+              {{ topic.totalLines }} Zugfolgen
             </p>
             <TopicProgress
               :mastered="masteryFor(topic).mastered"
               :total="masteryFor(topic).total"
               size="sm"
-              unit-label="Familien"
+              unit-label="Eröffnungen"
             />
           </div>
         </UCard>

@@ -9,7 +9,7 @@ import {
   type TrainingSession,
 } from '~/composables/training-session'
 import { selectLineForFocus } from '~/domain/select-next-line'
-import { isNewStepMove } from '~/domain/session'
+import { isNewStepMove, TARGET_REPS } from '~/domain/session'
 import {
   MISTAKE_BANNER_TEXT,
   bannerForResetReason,
@@ -94,6 +94,17 @@ const cancelMistakeTimer = (): void => {
   }
 }
 
+/**
+ * Freeze/unfreeze the chessboard. During the ~600ms scheduled reset and the
+ * opponent's own move the board must be locked so the user can't grab a
+ * piece (or an opponent's piece) while the app is finishing a transition.
+ * Any move accepted in that window would then race against the pending
+ * reset and leave the board visually out of sync with the session state.
+ */
+const setBoardLocked = (locked: boolean): void => {
+  board.value?.setLocked(locked)
+}
+
 const setBanner = (kind: BannerKind, text: string): void => {
   cancelMistakeTimer()
   banner.value = { kind, text }
@@ -174,10 +185,17 @@ const playOpponentIfNeeded = async (): Promise<void> => {
   const opponentSan = line.sanMoves[state.expectedMoveIndex]
   if (!opponentSan) return
 
+  // Lock the board for the whole opponent "think" window so a user on a
+  // touch screen can't accidentally grab their own piece while we wait.
+  setBoardLocked(true)
   await new Promise((r) => setTimeout(r, OPPONENT_DELAY_MS))
   const ok = board.value?.playOpponentSan(opponentSan)
-  if (!ok) return
+  if (!ok) {
+    setBoardLocked(false)
+    return
+  }
   await s.submit(opponentSan)
+  setBoardLocked(false)
 }
 
 const markers = (): PhaseMarkers | null => {
@@ -210,6 +228,9 @@ const resetBoardForNextAttempt = async (
   isResetting.value = false
   await playOpponentIfNeeded()
   showHintIfNewStep()
+  // At this point the board is back at the position the user is expected to
+  // respond from – re-enable their pieces.
+  setBoardLocked(false)
 }
 
 const startLine = (t: Topic, line: Line): void => {
@@ -223,11 +244,16 @@ const startLine = (t: Topic, line: Line): void => {
   session.value = createTrainingSession({ line, repo, activityRecorder })
   demonstratedSteps.value = new Set()
   clearHint()
+  // Board starts locked; we unlock once the initial opponent reply (if any)
+  // has been applied so the user can't drag a piece during the 50ms mount
+  // window or the OPPONENT_DELAY_MS window that follows.
+  setBoardLocked(true)
   setTimeout(async () => {
     board.value?.reset()
     await nextTick()
     await playOpponentIfNeeded()
     showHintIfNewStep()
+    setBoardLocked(false)
   }, 50)
 }
 
@@ -286,7 +312,7 @@ const finalizeMastery = (): void => {
     .concat([{
       lineId: currentLine.value.id,
       status: 'mastered',
-      reps: 10,
+      reps: TARGET_REPS,
       lastPracticedAt: Date.now(),
     }])
 }
@@ -304,7 +330,14 @@ const handleUserMove = async (san: string): Promise<void> => {
 
   if (result.result === 'wrong') {
     showMistakeBanner()
-    setTimeout(() => board.value?.undoLastMove(), 200)
+    // Freeze the board while we wait to undo the illegal move so the user
+    // can't drag another piece in the meantime and start a second wrong
+    // submission on top of the undo.
+    setBoardLocked(true)
+    setTimeout(() => {
+      board.value?.undoLastMove()
+      setBoardLocked(false)
+    }, 200)
     return
   }
 
@@ -320,12 +353,18 @@ const handleUserMove = async (san: string): Promise<void> => {
   const afterUser = markers()!
   if (afterUser.phase === 'done') {
     finalizeMastery()
+    setBoardLocked(true)
     setTimeout(() => topic.value && startNextLine(topic.value), NEXT_LINE_DELAY_MS)
     return
   }
 
   const reasonAfterUser = getResetReason(before, afterUser)
   if (reasonAfterUser !== null) {
+    // Lock IMMEDIATELY – the user just played a legal move and is staring
+    // at the end-of-step position for 600ms. Without the lock they can grab
+    // the next piece during the delay and see their move snap back once
+    // the board resets.
+    setBoardLocked(true)
     setTimeout(() => resetBoardForNextAttempt(reasonAfterUser), STEP_RESET_DELAY_MS)
     return
   }
@@ -335,12 +374,14 @@ const handleUserMove = async (san: string): Promise<void> => {
   const afterOpponent = markers()!
   if (afterOpponent.phase === 'done') {
     finalizeMastery()
+    setBoardLocked(true)
     setTimeout(() => topic.value && startNextLine(topic.value), NEXT_LINE_DELAY_MS)
     return
   }
 
   const reasonAfterOpponent = getResetReason(before, afterOpponent)
   if (reasonAfterOpponent !== null) {
+    setBoardLocked(true)
     setTimeout(() => resetBoardForNextAttempt(reasonAfterOpponent), STEP_RESET_DELAY_MS)
     return
   }
@@ -355,7 +396,7 @@ const skipLine = () => {
     .concat([{
       lineId: currentLine.value.id,
       status: 'mastered',
-      reps: 10,
+      reps: TARGET_REPS,
       lastPracticedAt: Date.now(),
     }])
   startNextLine(topic.value)
@@ -524,10 +565,10 @@ onBeforeUnmount(() => {
   <div class="mx-auto w-full max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
     <div v-if="!selection" class="rounded-xl border border-(--ui-border) p-6 text-center">
       <UIcon name="i-lucide-graduation-cap" class="mx-auto h-8 w-8 text-(--ui-text-muted)" />
-      <h1 class="mt-3 text-xl font-semibold">Noch keine Linie ausgewählt</h1>
+      <h1 class="mt-3 text-xl font-semibold">Noch keine Zugfolge ausgewählt</h1>
       <p class="mx-auto mt-2 max-w-md text-sm text-(--ui-text-muted)">
-        Wähle in den Eröffnungen ein Thema, eine Familie oder eine konkrete
-        Linie. Sie erscheint dann hier zum Üben.
+        Wähle in den Eröffnungen eine Gruppe, eine Eröffnung oder eine
+        konkrete Zugfolge. Sie erscheint dann hier zum Üben.
       </p>
       <UButton class="mt-4" color="primary" icon="i-lucide-book-open" @click="goToOpenings">
         Eröffnungen öffnen
@@ -560,7 +601,7 @@ onBeforeUnmount(() => {
               :mastered="progressApi.masteredFamilyCount.value"
               :total="progressApi.totalFamilyCount.value"
               size="sm"
-              unit-label="Familien"
+              unit-label="Eröffnungen"
             />
           </div>
         </div>
@@ -571,7 +612,7 @@ onBeforeUnmount(() => {
             variant="soft"
             icon="i-lucide-trophy"
             title="Alles gemeistert"
-            description="Du hast alle Linien dieser Auswahl durchgespielt. Wähle eine neue in den Eröffnungen oder der Aktivität."
+            description="Du hast alle Zugfolgen dieser Auswahl durchgespielt. Wähle eine neue in den Eröffnungen oder der Aktivität."
           />
         </div>
 
@@ -652,7 +693,7 @@ onBeforeUnmount(() => {
                 icon="i-lucide-rotate-ccw"
                 @click="restartLine"
               >
-                Linie neu starten
+                Zugfolge neu starten
               </UButton>
               <UButton
                 variant="soft"
@@ -660,7 +701,7 @@ onBeforeUnmount(() => {
                 icon="i-lucide-skip-forward"
                 @click="skipLine"
               >
-                Linie überspringen
+                Zugfolge überspringen
               </UButton>
             </div>
           </div>

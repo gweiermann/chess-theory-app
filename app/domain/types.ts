@@ -15,9 +15,12 @@ export interface TreeNode {
   children: TreeNode[]
 }
 
+export type FamilyCategory = 'opening' | 'defense' | 'gambit'
+
 export interface Family {
   id: string
   name: string
+  category: FamilyCategory
   lines: Line[]
   tree: TreeNode
 }

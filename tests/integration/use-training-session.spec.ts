@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createTrainingSession } from '~/composables/training-session'
 import { initialProgress } from '~/domain/progress'
+import { TARGET_REPS } from '~/domain/session'
 import type { Line, LineProgress } from '~/domain/types'
 
 const italian: Line = {
@@ -40,7 +41,7 @@ describe('createTrainingSession', () => {
       await session.submit(expected)
     }
 
-    expect(session.state.value.repsDone).toBe(10)
+    expect(session.state.value.repsDone).toBe(TARGET_REPS)
     expect(session.state.value.phase).toBe('done')
 
     const final = repo.saved.at(-1)!
