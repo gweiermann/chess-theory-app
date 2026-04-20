@@ -14,6 +14,7 @@ import {
   MISTAKE_BANNER_TEXT,
   bannerForResetReason,
   getResetReason,
+  willMoveTriggerReset,
   type BannerKind,
   type PhaseMarkers,
   type ResetReason,
@@ -73,6 +74,24 @@ const progressApi = shallowRef<ReturnType<typeof useTopicProgress> | null>(null)
 const isResetting = ref(false)
 const hintActive = ref(false)
 let mistakeTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Chessground supports pre-moves out of the box: while it's the opponent's
+ * turn the user can click one of their own pieces and chessground queues
+ * the move as a "premove" (ghost indicator) which is auto-applied the moment
+ * the opponent actually plays. The auto-application fires `user-move` SYNC
+ * during the opponent's `api.move()` call – before we've pushed the
+ * opponent's move through the training session. If we forwarded that event
+ * directly it would race the opponent submit and the session would reject
+ * the premove as "wrong" (expected opponent SAN, got user SAN).
+ *
+ * So we buffer: while {@link opponentInFlight} is true, {@link handleUserMove}
+ * stashes the SAN in {@link pendingUserMove} and returns. Once
+ * {@link playOpponentIfNeeded} has finished submitting the opponent's move it
+ * flushes the buffer through the normal {@link processUserMove} pipeline.
+ */
+let opponentInFlight = false
+let pendingUserMove: string | null = null
 
 const bannerPreset = computed(() =>
   banner.value ? BANNER_PRESETS[banner.value.kind] : null,
@@ -197,15 +216,39 @@ const playOpponentIfNeeded = async (): Promise<void> => {
   const opponentSan = line.sanMoves[state.expectedMoveIndex]
   if (!opponentSan) return
 
-  setBoardLocked(true)
+  // Only lock the board during the opponent's ~350ms delay when we KNOW the
+  // opponent's move will cause the board to snap back (done, new step,
+  // entering repeating, new rep). Otherwise leave movable.color at the
+  // user's side so chessground's built-in premovable kicks in and the user
+  // can line up their next move while the opponent is still "thinking".
+  const willReset = willMoveTriggerReset(state, opponentSan)
+  opponentInFlight = true
+  pendingUserMove = null
+  if (willReset) setBoardLocked(true)
+
   await new Promise((r) => setTimeout(r, OPPONENT_DELAY_MS))
   const ok = board.value?.playOpponentSan(opponentSan)
   if (!ok) {
-    setBoardLocked(false)
+    opponentInFlight = false
+    pendingUserMove = null
+    if (willReset) setBoardLocked(false)
     return
   }
   await s.submit(opponentSan)
-  setBoardLocked(false)
+
+  opponentInFlight = false
+  if (willReset) setBoardLocked(false)
+
+  // If chessground auto-played a premove during / right after the opponent's
+  // move it ended up queued in `pendingUserMove`. Now that the session
+  // knows about the opponent's move we can feed the premove through the
+  // normal pipeline so it either advances the session or flashes the
+  // mistake banner just like a "live" move would.
+  const queued = pendingUserMove
+  pendingUserMove = null
+  if (queued !== null) {
+    await processUserMove(queued)
+  }
 }
 
 /**
@@ -447,7 +490,24 @@ const finalizeMastery = (): void => {
     }])
 }
 
+/**
+ * Entry point wired to the chessboard's `@user-move` event. Pre-moves that
+ * chessground auto-applies while we're still waiting for the opponent to
+ * submit get buffered here so they race neither with the opponent's submit
+ * nor with each other. Everything else is forwarded straight into
+ * {@link processUserMove}.
+ */
 const handleUserMove = async (san: string): Promise<void> => {
+  if (opponentInFlight) {
+    // Overwrite any prior premove – chessground only keeps one at a time
+    // anyway and the user's most recent click is what they meant.
+    pendingUserMove = san
+    return
+  }
+  await processUserMove(san)
+}
+
+const processUserMove = async (san: string): Promise<void> => {
   if (isResetting.value) return
   const s = session.value
   const line = currentLine.value

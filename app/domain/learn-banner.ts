@@ -1,4 +1,4 @@
-import { TARGET_REPS } from './session'
+import { submitMove, TARGET_REPS, type SessionState } from './session'
 
 /**
  * The learn screen shows a single contextual banner above the chessboard.
@@ -69,6 +69,32 @@ export const shouldResetForTransition = (
   before: PhaseMarkers,
   after: PhaseMarkers,
 ): boolean => getResetReason(before, after) !== null
+
+/**
+ * Predict whether submitting {@link san} on {@link state} would push the
+ * session across a reset boundary (either into the `done` phase or into a
+ * new step / rep / phase that requires the board to snap back to the parent
+ * position). Used by the learn page to decide whether the board should stay
+ * unlocked during the opponent's reply delay so the user can premove the
+ * next move – if the opponent's move will reset the board anyway, any
+ * premove would be immediately discarded, so we keep the lock in place.
+ */
+export const willMoveTriggerReset = (state: SessionState, san: string): boolean => {
+  const predicted = submitMove(state, san)
+  if (predicted.result === 'wrong') return false
+  if (predicted.state.phase === 'done') return true
+  const before: PhaseMarkers = {
+    phase: state.phase,
+    currentStep: state.currentStep,
+    repsDone: state.repsDone,
+  }
+  const after: PhaseMarkers = {
+    phase: predicted.state.phase,
+    currentStep: predicted.state.currentStep,
+    repsDone: predicted.state.repsDone,
+  }
+  return getResetReason(before, after) !== null
+}
 
 const HALFWAY_REPS = Math.floor(TARGET_REPS / 2)
 
