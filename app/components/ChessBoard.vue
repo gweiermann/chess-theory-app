@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { TheChessboard, type BoardApi } from 'vue3-chessboard'
 import 'vue3-chessboard/style.css'
 import { Chess, type Move, type Square } from 'chess.js'
@@ -25,6 +25,14 @@ const emit = defineEmits<{
 const apiRef = ref<BoardApi | null>(null)
 const pendingTimeouts = new Set<ReturnType<typeof setTimeout>>()
 let suppressEmitForSan: string | null = null
+const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
+const ranks = ['1', '2', '3', '4', '5', '6', '7', '8'] as const
+const fileLabels = computed(() =>
+  props.orientation === 'white' ? [...files] : [...files].reverse(),
+)
+const rankLabels = computed(() =>
+  props.orientation === 'white' ? [...ranks].reverse() : [...ranks],
+)
 
 /*
  * vue3-chessboard captures the boardConfig OBJECT REFERENCE at mount time
@@ -203,15 +211,24 @@ onBeforeUnmount(() => {
       @board-created="handleBoardCreated"
       @move="handleMove"
     />
+    <div class="files-overlay" aria-hidden="true">
+      <span v-for="file in fileLabels" :key="file">{{ file.toUpperCase() }}</span>
+    </div>
+    <div class="ranks-overlay" aria-hidden="true">
+      <span v-for="rank in rankLabels" :key="rank">{{ rank }}</span>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .chessboard-shell {
+  position: relative;
   width: 100%;
   max-width: 560px;
   aspect-ratio: 1 / 1;
   margin-inline: auto;
+  padding-left: 16px;
+  padding-bottom: 16px;
 }
 
 /*
@@ -233,5 +250,31 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.4);
+}
+
+.files-overlay {
+  position: absolute;
+  inset-inline: 18px 2px;
+  inset-block-end: 0;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  font-size: 10px;
+  color: var(--ui-text-muted);
+  text-transform: uppercase;
+  text-align: center;
+  pointer-events: none;
+}
+
+.ranks-overlay {
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block: 2px 18px;
+  display: grid;
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  align-items: center;
+  font-size: 10px;
+  color: var(--ui-text-muted);
+  text-align: center;
+  pointer-events: none;
 }
 </style>

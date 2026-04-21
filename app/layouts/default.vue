@@ -19,16 +19,16 @@ const items: NavItem[] = [
     match: (p) => p.startsWith('/learn'),
   },
   {
-    to: '/activity',
-    label: 'Aktivität',
-    icon: 'i-lucide-history',
-    match: (p) => p.startsWith('/activity'),
-  },
-  {
     to: '/openings',
     label: 'Eröffnungen',
     icon: 'i-lucide-book-open',
     match: (p) => p.startsWith('/openings'),
+  },
+  {
+    to: '/profile',
+    label: 'Profil',
+    icon: 'i-lucide-user-round',
+    match: (p) => p.startsWith('/profile') || p.startsWith('/activity'),
   },
 ]
 
