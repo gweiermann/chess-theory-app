@@ -1035,13 +1035,13 @@ onBeforeUnmount(() => {
               <UIcon name="i-lucide-chevron-left" class="h-7 w-7" />
             </button>
             <p
-              class="flex-1 truncate text-center text-sm text-(--ui-text-muted)"
+              class="flex-1 truncate text-center text-base text-(--ui-text-muted)"
               data-testid="play-topic-label"
             >
               {{ topic.label }}<template v-if="focusedFamilyName"> · {{ focusedFamilyName }}</template>
             </p>
             <span
-              class="shrink-0 tabular-nums text-sm text-(--ui-text-muted)"
+              class="shrink-0 tabular-nums text-base text-(--ui-text-muted)"
               data-testid="play-progress"
             >
               {{ masteredCount }}/{{ totalLineCount }}
@@ -1057,7 +1057,8 @@ onBeforeUnmount(() => {
 
         <!-- PHASE LABEL / BANNER SLOT (fixed height — board never moves) -->
         <div
-          class="shrink-0 relative h-16 overflow-hidden"
+          class="shrink-0 relative h-16 w-full overflow-hidden"
+          style="max-width: 560px; margin-inline: auto;"
           data-testid="play-phase-bar"
         >
           <!-- Phase label: always in DOM so toBeVisible() is stable -->

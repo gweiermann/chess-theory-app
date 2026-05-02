@@ -239,7 +239,7 @@ onBeforeUnmount(() => {
 .chessboard-shell.coordinates-inside {
   padding-left: 0;
   padding-bottom: 0;
-  max-width: 100%;
+  max-width: 560px;
 }
 
 /*
