@@ -23,6 +23,8 @@ import {
 import type { Line, LineProgress, Topic } from '~/domain/types'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
 
+definePageMeta({ layout: 'play' })
+
 const OPPONENT_DELAY_MS = 350
 const STEP_RESET_DELAY_MS = 600
 const NEXT_LINE_DELAY_MS = 1500
@@ -53,6 +55,7 @@ const BANNER_PRESETS: Record<BannerKind, { classes: string; icon: string }> = {
 }
 
 const router = useRouter()
+const goBack = () => router.back()
 const { $repositories } = useNuxtApp()
 const { selection, set: setSelection } = useCurrentSelection()
 const learnState = useLearnState()
@@ -120,6 +123,44 @@ const canGoBackward = computed(() => activeReplayPly.value > 0)
 const canGoForward = computed(
   () => activeReplayPly.value < maxReplayPly.value,
 )
+
+// Scope progress to the current family (or family of the focused line), not
+// the whole topic – the whole topic can have thousands of lines.
+const progressScopedLines = computed(() => {
+  const t = topic.value
+  const sel = selection.value
+  if (!t || !sel) return []
+  const focus = sel.focus
+  let familyId: string | null = null
+  if (focus.kind === 'family') familyId = focus.familyId
+  else if (focus.kind === 'line') {
+    familyId = t.families.find((f) => f.lines.some((l) => l.id === focus.lineId))?.id ?? null
+  }
+  if (!familyId) {
+    const line = currentLine.value
+    if (line) familyId = t.families.find((f) => f.lines.some((l) => l.id === line.id))?.id ?? null
+  }
+  const family = familyId ? t.families.find((f) => f.id === familyId) : null
+  return family?.lines ?? t.families.flatMap((f) => f.lines)
+})
+const masteredCount = computed(() => {
+  const ids = new Set(progressScopedLines.value.map((l) => l.id))
+  return progressApi.value?.progress.value.filter((p) => p.status === 'mastered' && ids.has(p.lineId)).length ?? 0
+})
+const totalLineCount = computed(() => progressScopedLines.value.length)
+const masteredPercent = computed(() =>
+  totalLineCount.value > 0 ? Math.round((masteredCount.value / totalLineCount.value) * 100) : 0,
+)
+const phaseLabel = computed(() => {
+  const s = session.value?.state.value
+  if (!s) return ''
+  switch (s.phase) {
+    case 'intro': return 'Einführung'
+    case 'building': return `Aufbau · Schritt ${s.currentStep} von ${s.totalSteps}`
+    case 'repeating': return `Wiederholung · ${s.repsDone + 1} von ${TARGET_REPS}`
+    case 'done': return 'Fertig'
+  }
+})
 
 const isOpponentTurn = (line: Line, expectedIndex: number): boolean => {
   if (expectedIndex >= line.sanMoves.length) return false
@@ -932,8 +973,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-6xl px-3 py-3 sm:px-4 sm:py-6">
-    <div v-if="!selection" class="rounded-xl border border-(--ui-border) p-6 text-center">
+  <!-- Empty state -->
+  <div v-if="!selection" class="flex flex-1 items-center justify-center p-6">
+    <div class="rounded-xl border border-(--ui-border) p-6 text-center">
       <UIcon name="i-lucide-graduation-cap" class="mx-auto h-8 w-8 text-(--ui-text-muted)" />
       <h1 class="mt-3 text-xl font-semibold">Noch keine Zugfolge ausgewählt</h1>
       <p class="mx-auto mt-2 max-w-md text-sm text-(--ui-text-muted)">
@@ -944,202 +986,255 @@ onBeforeUnmount(() => {
         Eröffnungen öffnen
       </UButton>
     </div>
+  </div>
 
-    <template v-else>
-      <div v-if="loading && !topic" class="text-(--ui-text-muted)">Lade Thema…</div>
-      <UAlert
-        v-else-if="error"
-        color="error"
-        variant="soft"
-        icon="i-lucide-alert-triangle"
-        :title="error.message"
-      />
+  <template v-else>
+    <div v-if="loading && !topic" class="flex flex-1 items-center justify-center p-6 text-(--ui-text-muted)">
+      Lade Thema…
+    </div>
+    <UAlert
+      v-else-if="error"
+      class="m-4"
+      color="error"
+      variant="soft"
+      icon="i-lucide-alert-triangle"
+      :title="error.message"
+    />
 
-      <template v-else-if="topic">
-        <div v-if="allMastered">
-          <UAlert
-            color="success"
-            variant="soft"
-            icon="i-lucide-trophy"
-            title="Alles gemeistert"
-            description="Du hast alle Zugfolgen dieser Auswahl durchgespielt. Wähle eine neue in den Eröffnungen oder in deinem Profil."
+    <template v-else-if="topic">
+      <div v-if="allMastered" class="m-4">
+        <UAlert
+          color="success"
+          variant="soft"
+          icon="i-lucide-trophy"
+          title="Alles gemeistert"
+          description="Du hast alle Zugfolgen dieser Auswahl durchgespielt. Wähle eine neue in den Eröffnungen oder in deinem Profil."
+        />
+      </div>
+
+      <div v-else-if="session && currentLine" class="learn-layout">
+        <!-- TOP BAR: div.min-w-0 is a direct child for selector compatibility -->
+        <div class="min-w-0 shrink-0 border-b border-(--ui-border)/50 bg-(--ui-bg)">
+          <div class="flex items-center gap-1 px-1 pt-1">
+            <UButton
+              icon="i-lucide-chevron-left"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              class="-ml-0.5 shrink-0"
+              aria-label="Verlassen"
+              data-testid="play-back-button"
+              @click="goBack"
+            />
+            <div class="flex-1" />
+            <div
+              class="flex shrink-0 flex-col items-end gap-0.5 pr-2"
+              data-testid="play-progress"
+            >
+              <span class="tabular-nums text-xs text-(--ui-text-muted)">
+                {{ masteredCount }}/{{ totalLineCount }}
+              </span>
+              <div class="h-1 w-10 overflow-hidden rounded-full bg-(--ui-bg-elevated)">
+                <div
+                  class="h-full rounded-full bg-(--ui-primary) transition-[width] duration-500"
+                  :style="{ width: `${masteredPercent}%` }"
+                />
+              </div>
+            </div>
+          </div>
+          <p class="truncate px-3 pb-0.5 text-xs uppercase tracking-widest text-(--ui-text-muted)">
+            {{ topic.label }}<template v-if="focusedFamilyName"> · {{ focusedFamilyName }}</template>
+          </p>
+          <h1
+            class="truncate px-3 pb-2 text-sm font-semibold leading-tight"
+            data-testid="learn-line-heading"
+          >
+            {{ currentLine.fullName }}
+          </h1>
+        </div>
+
+        <!-- BANNER (reserved slot so board position never shifts) -->
+        <div class="shrink-0 min-h-[2.5rem] px-3 py-1">
+          <Transition
+            enter-active-class="transition duration-150"
+            leave-active-class="transition duration-150"
+            enter-from-class="-translate-y-1 opacity-0"
+            leave-to-class="-translate-y-1 opacity-0"
+          >
+            <div
+              v-if="banner && bannerPreset"
+              :class="[
+                'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
+                bannerPreset.classes,
+              ]"
+              role="status"
+              aria-live="polite"
+              :data-banner-kind="banner.kind"
+            >
+              <UIcon :name="bannerPreset.icon" class="h-4 w-4 shrink-0" />
+              <span class="min-w-0 flex-1">{{ banner.text }}</span>
+              <UButton
+                v-if="session.state.value.phase === 'intro' && parentLine"
+                color="info"
+                variant="link"
+                size="xs"
+                class="h-auto p-0 text-xs whitespace-nowrap"
+                @click="goToForgottenParent"
+              >
+                Hab ich vergessen
+              </UButton>
+            </div>
+          </Transition>
+        </div>
+
+        <!-- BOARD: full width, coordinates rendered inside the squares -->
+        <div class="shrink-0">
+          <ChessBoard
+            ref="board"
+            :orientation="currentLine.userSide"
+            :player-color="currentLine.userSide"
+            :coordinates-inside="true"
+            @user-move="handleUserMove"
           />
         </div>
 
+        <!-- PHASE INFO + QUICK ACTIONS -->
         <div
-          v-else-if="session && currentLine"
-          class="learn-layout"
+          class="shrink-0 flex items-center gap-1 border-t border-(--ui-border)/40 px-3 py-2"
+          data-testid="play-phase-bar"
         >
-          <div class="min-w-0 px-1 pb-32 pt-2 sm:px-2 sm:pb-4 sm:pt-3">
-            <p class="text-xs uppercase tracking-widest text-(--ui-text-muted)">
-              {{ topic.label }}
-              <template v-if="focusedFamilyName">
-                · {{ focusedFamilyName }}
-              </template>
-            </p>
-            <h1
-              class="mt-1 text-base leading-tight font-semibold sm:text-2xl"
-              data-testid="learn-line-heading"
-            >
-              {{ currentLine.fullName }}
-            </h1>
-
-            <div class="mt-3 min-h-[2.5rem]">
-              <Transition
-                enter-active-class="transition duration-150"
-                leave-active-class="transition duration-150"
-                enter-from-class="-translate-y-1 opacity-0"
-                leave-to-class="-translate-y-1 opacity-0"
-              >
-                <div
-                  v-if="banner && bannerPreset"
-                  :class="[
-                    'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
-                    bannerPreset.classes,
-                  ]"
-                  role="status"
-                  aria-live="polite"
-                  :data-banner-kind="banner.kind"
-                >
-                  <UIcon :name="bannerPreset.icon" class="h-4 w-4 shrink-0" />
-                  <span class="min-w-0 flex-1">{{ banner.text }}</span>
-                  <UButton
-                    v-if="session.state.value.phase === 'intro' && parentLine"
-                    color="info"
-                    variant="link"
-                    size="xs"
-                    class="h-auto p-0 text-xs whitespace-nowrap"
-                    @click="goToForgottenParent"
-                  >
-                    Hab ich vergessen
-                  </UButton>
-                </div>
-              </Transition>
-            </div>
-
-            <div class="rounded-2xl border border-(--ui-border)/60 bg-(--ui-bg-elevated)/20 p-2 sm:p-3">
-              <ChessBoard
-                ref="board"
-                :orientation="currentLine.userSide"
-                :player-color="currentLine.userSide"
-                @user-move="handleUserMove"
-              />
-            </div>
-          </div>
-
-          <div
-            class="fixed inset-x-0 bottom-[4.25rem] z-[70] px-3 sm:static sm:z-auto sm:px-2"
-            style="padding-bottom: env(safe-area-inset-bottom)"
+          <span
+            class="flex-1 truncate text-sm text-(--ui-text-muted)"
+            data-testid="play-phase-label"
           >
-            <div class="relative mx-auto flex w-full max-w-xl items-center justify-center gap-2 rounded-full border border-(--ui-border) bg-(--ui-bg)/95 px-3 py-2 backdrop-blur">
-              <UButton
-                color="primary"
-                variant="soft"
-                icon="i-lucide-lightbulb"
-                :disabled="hintActive"
-                aria-label="Hilfe"
-                @click="showHelp"
-              />
-              <UButton
-                color="neutral"
-                variant="soft"
-                icon="i-lucide-chevron-left"
-                :disabled="!canGoBackward"
-                aria-label="Zurück"
-                @click="goMoveHistory(-1)"
-              />
-              <UButton
-                color="neutral"
-                variant="soft"
-                icon="i-lucide-chevron-right"
-                :disabled="!canGoForward"
-                aria-label="Vor"
-                @click="goMoveHistory(1)"
-              />
-              <UButton
-                color="neutral"
-                variant="soft"
-                icon="i-lucide-info"
-                aria-label="Info"
-                @click="showInfoModal = true"
-              />
-              <UButton
-                color="neutral"
-                variant="soft"
-                icon="i-lucide-ellipsis"
-                aria-label="Mehr"
-                @click="showActionSheet = true"
-              />
-            </div>
-          </div>
+            {{ phaseLabel }}
+          </span>
+          <UButton
+            icon="i-lucide-skip-forward"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            aria-label="Überspringen"
+            @click="skipLine"
+          />
+          <UButton
+            icon="i-lucide-rotate-ccw"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            aria-label="Neu starten"
+            @click="restartLine"
+          />
         </div>
 
-        <UModal v-model:open="showInfoModal">
-          <template #content>
-            <div class="p-4 sm:p-5">
-              <h2 class="mb-3 text-lg font-semibold">{{ currentLine.fullName }}</h2>
-              <SessionHud
-                :line="currentLine"
-                :state="session.state.value"
-                :last-feedback="session.lastFeedback.value"
-              />
-            </div>
-          </template>
-        </UModal>
+        <!-- BOTTOM ACTION BAR (takes the place of the nav bar) -->
+        <div
+          class="mt-auto border-t border-(--ui-border) bg-(--ui-bg)/95 backdrop-blur"
+          style="padding-bottom: env(safe-area-inset-bottom)"
+          data-testid="play-action-bar"
+        >
+          <div class="flex items-center justify-around px-2 py-1.5">
+            <UButton
+              color="primary"
+              variant="ghost"
+              icon="i-lucide-lightbulb"
+              :disabled="hintActive"
+              aria-label="Hilfe"
+              @click="showHelp"
+            />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-chevron-left"
+              :disabled="!canGoBackward"
+              aria-label="Zurück"
+              @click="goMoveHistory(-1)"
+            />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-chevron-right"
+              :disabled="!canGoForward"
+              aria-label="Vor"
+              @click="goMoveHistory(1)"
+            />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-clock"
+              aria-label="Info"
+              @click="showInfoModal = true"
+            />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-ellipsis"
+              aria-label="Mehr"
+              @click="showActionSheet = true"
+            />
+          </div>
+        </div>
+      </div>
 
-        <UModal v-model:open="showActionSheet">
-          <template #content>
-            <div class="p-3">
-              <h2 class="mb-2 text-sm font-semibold text-(--ui-text-muted)">Aktionen</h2>
-              <div class="space-y-1">
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-rotate-ccw"
-                  class="w-full justify-start"
-                  @click="restartLine"
-                >
-                  Neu starten
-                </UButton>
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-skip-forward"
-                  class="w-full justify-start"
-                  @click="skipLine"
-                >
-                  Überspringen
-                </UButton>
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-corner-up-left"
-                  :disabled="!topic || !currentLine"
-                  :data-testid="`parent-line-button`"
-                  class="w-full justify-start"
-                  @click="goToPreviousLine"
-                >
-                  Vorherige Folge
-                </UButton>
-              </div>
+      <UModal v-if="session && currentLine" v-model:open="showInfoModal">
+        <template #content>
+          <div class="p-4 sm:p-5">
+            <h2 class="mb-3 text-lg font-semibold">{{ currentLine.fullName }}</h2>
+            <SessionHud
+              :line="currentLine"
+              :state="session.state.value"
+              :last-feedback="session.lastFeedback.value"
+            />
+          </div>
+        </template>
+      </UModal>
+
+      <UModal v-if="session && currentLine" v-model:open="showActionSheet">
+        <template #content>
+          <div class="p-3">
+            <h2 class="mb-2 text-sm font-semibold text-(--ui-text-muted)">Aktionen</h2>
+            <div class="space-y-1">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-rotate-ccw"
+                class="w-full justify-start"
+                @click="restartLine"
+              >
+                Neu starten
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-skip-forward"
+                class="w-full justify-start"
+                @click="skipLine"
+              >
+                Überspringen
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-corner-up-left"
+                :disabled="!topic || !currentLine"
+                data-testid="parent-line-button"
+                class="w-full justify-start"
+                @click="goToPreviousLine"
+              >
+                Vorherige Folge
+              </UButton>
             </div>
-          </template>
-        </UModal>
-      </template>
+          </div>
+        </template>
+      </UModal>
     </template>
-  </div>
+  </template>
 </template>
 
 <style scoped>
 .learn-layout {
-  min-height: calc(100dvh - 7.5rem);
-  overflow: hidden;
-}
-
-@media (min-width: 640px) {
-  .learn-layout {
-    min-height: 0;
-    overflow: visible;
-  }
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
 }
 </style>
