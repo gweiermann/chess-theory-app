@@ -135,7 +135,7 @@ const learnLine = (lineId: string) => {
   if (!topic.value) return
   setSelection({
     topicId: topic.value.id,
-    focus: { kind: 'line', lineId },
+    focus: { kind: 'line', lineId, exclusive: true },
   })
   router.push('/learn/play')
 }
