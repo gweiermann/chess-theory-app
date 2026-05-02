@@ -85,14 +85,53 @@ test.beforeEach(async ({ page }) => {
   await clearStorage(page)
 })
 
-test('root navigates to /learn and shows the empty state when no selection exists', async ({
+test('root navigates to /learn and shows the mode selection screen', async ({
   page,
 }) => {
   await page.goto('/')
   await expect(page).toHaveURL(/\/learn$/)
   await expect(
+    page.getByRole('heading', { name: 'Modus wählen' }),
+  ).toBeVisible()
+})
+
+test('/learn/play shows the empty state when no selection exists', async ({
+  page,
+}) => {
+  await page.goto('/learn/play')
+  await expect(
     page.getByRole('heading', { name: 'Noch keine Zugfolge ausgewählt' }),
   ).toBeVisible()
+})
+
+test('mode selection screen shows three modes with "Eröffnungen lernen" pre-selected', async ({
+  page,
+}) => {
+  await page.goto('/learn')
+  await expect(page.getByTestId('mode-card-openings')).toBeVisible()
+  await expect(page.getByTestId('mode-card-random')).toBeVisible()
+  await expect(page.getByTestId('mode-card-error-trainer')).toBeVisible()
+  await expect(page.getByTestId('mode-play-button')).toBeVisible()
+  // Eröffnungen lernen is pre-selected (green border)
+  await expect(page.getByTestId('mode-card-openings')).toHaveClass(/border-\(--ui-primary\)/)
+})
+
+test('mode selection Spielen button navigates to /learn/play', async ({
+  page,
+}) => {
+  await page.goto('/learn')
+  await page.getByTestId('mode-play-button').click()
+  await expect(page).toHaveURL(/\/learn\/play$/)
+})
+
+test('Zufallsmodus and Fehlertrainer cards are disabled and show "Demnächst" badge', async ({
+  page,
+}) => {
+  await page.goto('/learn')
+  await expect(page.getByTestId('mode-card-random')).toBeDisabled()
+  await expect(page.getByTestId('mode-card-error-trainer')).toBeDisabled()
+  const badges = page.getByText('Demnächst')
+  await expect(badges).toHaveCount(2)
 })
 
 test('bottom navigation jumps between Learn, Openings and Profile', async ({ page }) => {
@@ -151,17 +190,14 @@ test('the openings topic page exposes a search that filters families in place', 
   await expect(page.getByRole('button', { name: 'Italian Game' })).toHaveCount(0)
 })
 
-test('clicking "Weiter lernen" sets the selection and opens /learn with the board', async ({
+test('clicking "Weiter lernen" sets the selection and opens /learn/play with the board', async ({
   page,
 }) => {
   await page.goto('/openings/e4')
   await page.getByRole('button', { name: 'Weiter lernen' }).click()
-  await expect(page).toHaveURL(/\/learn$/)
+  await expect(page).toHaveURL(/\/learn\/play$/)
 
-  // The learn page now uses the current line's full name as its h1 instead
-  // of the stand-alone "Üben" label, so assert on the mounted chess board
-  // and the learn heading presence instead. (The session phase text lives
-  // inside the Info modal now so we don't assert on it here.)
+  // The learn/play page uses the current line's full name as its h1.
   await expect(page.locator('cg-board')).toBeVisible()
   await expect(page.getByTestId('learn-line-heading')).toBeVisible()
 })
@@ -169,8 +205,8 @@ test('clicking "Weiter lernen" sets the selection and opens /learn with the boar
 test('drilling a full line via the e2e bridge marks it as mastered', async ({ page }) => {
   await page.goto('/openings/e4')
   await page.getByRole('button', { name: 'Weiter lernen' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
   const line = await page.evaluate(() => window.__chessTheory!.currentLine())
@@ -224,8 +260,8 @@ test('the board automatically hints the new move of a fresh step and clears it a
   await setParentAutoplay(page, true)
   await page.goto('/openings/e4')
   await page.getByRole('button', { name: 'Weiter lernen' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
   // Wait for the auto-hint to appear at the start of the very first step.
@@ -258,8 +294,8 @@ test('auto-hint re-arms with the NEW expected move after the opponent replies on
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
   await page.waitForFunction(() => {
@@ -326,8 +362,8 @@ test('a one-step line (Alekhine Defense, 1.e4 Nf6) drives from the opponent-firs
   await page.goto('/openings/e4/family/alekhine-defense')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
   await page.waitForFunction(() => {
@@ -386,8 +422,8 @@ test('the help button is exposed and reveals the next move on demand at session 
   await setParentAutoplay(page, true)
   await page.goto('/openings/e4')
   await page.getByRole('button', { name: 'Weiter lernen' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
   // The Help button is rendered on the page.
@@ -424,7 +460,7 @@ test('learn header shows the current line name and bottom controls stay icon-onl
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
+  await page.waitForURL(/\/learn\/play$/)
   await page.waitForSelector('cg-board')
 
   const lineName = await page.evaluate(() => {
@@ -444,7 +480,7 @@ test('three-dot actions open as modal sheet (not board-overlapping popover)', as
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
+  await page.waitForURL(/\/learn\/play$/)
   await page.waitForSelector('cg-board')
 
   await page.getByRole('button', { name: 'Mehr' }).click()
@@ -467,7 +503,7 @@ test('intro banner keeps board position stable and renders "Hab ich vergessen" i
   await page.goto('/openings/e4/family/alekhine-defense')
   const brooklynRow = page.locator('ul > li', { hasText: 'Brooklyn Variation' }).first()
   await brooklynRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
+  await page.waitForURL(/\/learn\/play$/)
   await page.waitForSelector('cg-board')
 
   const measureBoard = async () => {
@@ -485,7 +521,7 @@ test('intro banner keeps board position stable and renders "Hab ich vergessen" i
   expect(introRect).not.toBeNull()
 
   // Complete intro plies quickly and ensure board anchor stays stable.
-  await page.goto('/learn?e2e=1')
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.state?.()))
   for (const san of ['e4', 'Nf6']) {
     await page.evaluate(async (move) => {
@@ -528,8 +564,8 @@ test('the chessboard stays at a stable viewport position whether or not the hint
     await page.goto('/openings/e4/family/italian-game')
     const firstRow = page.locator('ul > li').first()
     await firstRow.getByRole('button', { name: 'Üben' }).click()
-    await page.waitForURL(/\/learn$/)
-    await page.goto('/learn?e2e=1')
+    await page.waitForURL(/\/learn\/play$/)
+    await page.goto('/learn/play?e2e=1')
     await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
     // Initial auto-hint: banner active.
@@ -560,8 +596,8 @@ test('the activity log records session_started + mistake events in localStorage 
 }) => {
   await page.goto('/openings/e4')
   await page.getByRole('button', { name: 'Weiter lernen' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
   // Trigger a mistake by submitting an obviously illegal SAN for the position.
@@ -590,8 +626,8 @@ test('a wrong move flashes a red mistake banner that auto-clears', async ({ page
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
 
@@ -620,8 +656,8 @@ test('advancing to the next building step shows a blue memory banner above the b
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
   await page.waitForFunction(() => {
@@ -651,8 +687,8 @@ test('finishing the building phase shows a green setup-complete banner before th
   await page.goto('/openings/e4/family/alekhine-defense')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
 
@@ -676,8 +712,8 @@ test('the halfway repetition is announced with a green motivation banner', async
   await page.goto('/openings/e4/family/alekhine-defense')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
 
@@ -729,9 +765,8 @@ test('manually picking a specific line in a family routes to /learn for that lin
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
 
-  await expect(page).toHaveURL(/\/learn$/)
-  // The h1 now carries the selected line's full name rather than a stand
-  // alone "Üben" label, so we assert on the mounted board instead.
+  await expect(page).toHaveURL(/\/learn\/play$/)
+  // The h1 carries the selected line's full name; assert on the mounted board.
   await expect(page.locator('cg-board')).toBeVisible()
 })
 
@@ -739,8 +774,8 @@ test('parent-prefix autoplay is off by default', async ({ page }) => {
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.state?.()))
 
   const state = await page.evaluate(() => window.__chessTheory!.state() as {
@@ -758,8 +793,8 @@ test('profile toggle enables parent-prefix autoplay', async ({ page }) => {
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.state?.()))
 
   const state = await page.evaluate(() => window.__chessTheory!.state() as {
@@ -779,8 +814,8 @@ test('with autoplay off, an Italian Game line starts in intro phase prompting th
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.state?.()))
 
   const state = await page.evaluate(() => window.__chessTheory!.state() as {
@@ -806,7 +841,7 @@ test('the learn header renders topic/family in a <p> and the full line name in <
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
+  await page.waitForURL(/\/learn\/play$/)
   await page.waitForSelector('cg-board')
 
   const topicLabel = page.locator('.learn-layout > div.min-w-0 > p').first()
@@ -833,8 +868,8 @@ test('after mastering a line the selection broadens so the next unmastered sibli
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
   const initialLineId = await page.evaluate(
@@ -885,9 +920,9 @@ test('clicking "Überspringen" on a line marks it mastered and advances to the n
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
+  await page.waitForURL(/\/learn\/play$/)
   await page.waitForSelector('cg-board')
-  await page.goto('/learn?e2e=1')
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
 
   const initialLineId = await page.evaluate(
@@ -927,7 +962,7 @@ test('history navigation: back button is disabled at start, enables once the use
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
+  await page.waitForURL(/\/learn\/play$/)
   await page.waitForSelector('cg-board')
 
   const back = page.getByRole('button', { name: 'Zurück' })
@@ -939,7 +974,7 @@ test('history navigation: back button is disabled at start, enables once the use
   // maxReplayPly at start.
   await expect(forward).toBeDisabled()
 
-  await page.goto('/learn?e2e=1')
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.state?.()))
 
   // Play one user move via the e2e bridge. After this the back button
@@ -970,8 +1005,8 @@ test('premove support: consecutive user moves across an opponent reply reach the
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
 
@@ -1031,8 +1066,8 @@ test('handleUserMove buffering: premove during opponent-in-flight is queued via 
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
   await firstRow.getByRole('button', { name: 'Üben' }).click()
-  await page.waitForURL(/\/learn$/)
-  await page.goto('/learn?e2e=1')
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
   await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
   await page.waitForFunction(() => window.__chessTheory!.hint().active === true)
 

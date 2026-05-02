@@ -40,7 +40,7 @@ const learnLine = (line: Line) => {
     topicId: topic.value.id,
     focus: { kind: 'line', lineId: line.id },
   })
-  router.push('/learn')
+  router.push('/learn/play')
 }
 
 const learnFamily = () => {
@@ -49,7 +49,7 @@ const learnFamily = () => {
     topicId: topic.value.id,
     focus: { kind: 'family', familyId: family.value.id },
   })
-  router.push('/learn')
+  router.push('/learn/play')
 }
 </script>
 

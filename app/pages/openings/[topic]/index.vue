@@ -83,7 +83,7 @@ const totalFiltered = computed(() =>
 const learnTopic = () => {
   if (!topic.value) return
   setSelection({ topicId: topic.value.id, focus: { kind: 'topic' } })
-  router.push('/learn')
+  router.push('/learn/play')
 }
 
 const learnFamily = (family: Family) => {
@@ -92,7 +92,7 @@ const learnFamily = (family: Family) => {
     topicId: topic.value.id,
     focus: { kind: 'family', familyId: family.id },
   })
-  router.push('/learn')
+  router.push('/learn/play')
 }
 
 const openFamily = (family: Family) => {
