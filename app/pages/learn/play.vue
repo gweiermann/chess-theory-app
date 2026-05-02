@@ -467,7 +467,10 @@ const startLine = (
   // `autoPlayParentPrefix` skips this manual walkthrough and auto-plays
   // the prefix instead – intended for experienced users who already know
   // the parent inside out.
-  const runsIntro = introIsPlayable && prefixPlies > 0 && !autoPlayParentPrefix.value
+  // For forced node prefixes the user explicitly navigated to that position
+  // in the tree, so there is no value in quizzing them on how to reach it —
+  // always auto-replay the prefix instead of running the intro.
+  const runsIntro = introIsPlayable && prefixPlies > 0 && !autoPlayParentPrefix.value && !forcedParent
   const skipIntro = !runsIntro
 
   const repo = $repositories.createProgressRepository(t)
