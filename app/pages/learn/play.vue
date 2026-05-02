@@ -131,6 +131,10 @@ const progressScopedLines = computed(() => {
   const sel = selection.value
   if (!t || !sel) return []
   const focus = sel.focus
+  if (focus.kind === 'node') {
+    const lineIdSet = new Set(focus.lineIds)
+    return t.families.flatMap((f) => f.lines).filter((l) => lineIdSet.has(l.id))
+  }
   let familyId: string | null = null
   if (focus.kind === 'family') familyId = focus.familyId
   else if (focus.kind === 'line') {

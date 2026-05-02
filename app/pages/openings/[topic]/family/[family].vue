@@ -121,6 +121,16 @@ const learnNode = () => {
   router.push('/learn/play')
 }
 
+const learnChildNode = (child: TreeNode) => {
+  if (!topic.value) return
+  const lineIds = flattenLineIdsInOrder(child)
+  setSelection({
+    topicId: topic.value.id,
+    focus: { kind: 'node', lineIds },
+  })
+  router.push('/learn/play')
+}
+
 const learnLine = (lineId: string) => {
   if (!topic.value) return
   setSelection({
@@ -288,19 +298,21 @@ const findLine = (lineId: string) => {
             </div>
           </template>
 
-          <!-- Branch node: navigate deeper -->
+          <!-- Branch node: navigate deeper + optional Üben -->
           <template v-else>
-            <button
-              type="button"
-              class="flex w-full items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-(--ui-bg-elevated) sm:p-4"
-              @click="navigateInto(child.label)"
-            >
-              <div class="min-w-0">
-                <p class="truncate text-sm font-medium sm:text-base">{{ child.label }}</p>
-                <p class="mt-0.5 text-xs text-(--ui-text-muted)">
-                  {{ childProgressLabel(child) }} Zugfolgen
-                </p>
-              </div>
+            <div class="flex items-center justify-between gap-3 p-3 sm:p-4">
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                @click="navigateInto(child.label)"
+              >
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-medium sm:text-base">{{ child.label }}</p>
+                  <p class="mt-0.5 text-xs text-(--ui-text-muted)">
+                    {{ childProgressLabel(child) }} Zugfolgen
+                  </p>
+                </div>
+              </button>
               <div class="flex shrink-0 items-center gap-2">
                 <UBadge
                   v-if="isChildMastered(child)"
@@ -310,12 +322,25 @@ const findLine = (lineId: string) => {
                 >
                   Gemeistert
                 </UBadge>
-                <UIcon
-                  name="i-lucide-chevron-right"
-                  class="text-(--ui-text-muted) group-hover:text-(--ui-text)"
-                />
+                <UButton
+                  v-else
+                  size="xs"
+                  color="primary"
+                  variant="soft"
+                  icon="i-lucide-play"
+                  @click="learnChildNode(child)"
+                >
+                  Üben
+                </UButton>
+                <button
+                  type="button"
+                  class="flex items-center p-1 text-(--ui-text-muted) hover:text-(--ui-text)"
+                  @click="navigateInto(child.label)"
+                >
+                  <UIcon name="i-lucide-chevron-right" />
+                </button>
               </div>
-            </button>
+            </div>
           </template>
         </li>
       </ul>
