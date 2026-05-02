@@ -329,7 +329,7 @@ const playOpponentIfNeeded = async (): Promise<void> => {
  * intro – the user should never have to replay the parent by hand during
  * a drill loop. Used at session start only when `skipIntro` is on.
  */
-const replayPrefixOntoBoard = async (): Promise<void> => {
+const replayPrefixOntoBoard = async (instant = false): Promise<void> => {
   const line = currentLine.value
   const s = session.value
   if (!line || !s) return
@@ -339,9 +339,7 @@ const replayPrefixOntoBoard = async (): Promise<void> => {
     const san = line.sanMoves[i]
     if (!san) break
     board.value?.playOpponentSan(san)
-    // Pause between plies so the user can see the setup animate instead of
-    // all pieces jumping into place at once.
-    if (i < prefix - 1) {
+    if (!instant && i < prefix - 1) {
       await new Promise((r) => setTimeout(r, PREFIX_REPLAY_DELAY_MS))
     }
   }
@@ -370,11 +368,11 @@ const resetBoardForNextAttempt = async (
   } else {
     clearBanner()
   }
+  board.value?.setAnimationEnabled(false)
   board.value?.reset()
   await nextTick()
-  // Auto-play the prefix so the user starts the next rep/step FROM the
-  // parent position instead of the empty board.
-  await replayPrefixOntoBoard()
+  await replayPrefixOntoBoard(true)
+  board.value?.setAnimationEnabled(true)
   isResetting.value = false
   await playOpponentIfNeeded()
   showHintIfNewStep()
@@ -477,11 +475,13 @@ const startLine = (
   }
 
   setTimeout(async () => {
+    board.value?.setAnimationEnabled(false)
     board.value?.reset()
     await nextTick()
     if (skipIntro && prefixPlies > 0) {
-      await replayPrefixOntoBoard()
+      await replayPrefixOntoBoard(true)
     }
+    board.value?.setAnimationEnabled(true)
     await playOpponentIfNeeded()
     // showHintIfNewStep is a no-op during intro (isNewStepMove checks for
     // building phase), so it's safe to call unconditionally. When intro
@@ -554,6 +554,7 @@ const rehydrateBoardFromSession = async (): Promise<void> => {
   setBoardLocked(true)
   await nextTick()
   await new Promise((r) => setTimeout(r, 50))
+  board.value?.setAnimationEnabled(false)
   board.value?.reset()
   await nextTick()
   const idx = s.state.value.expectedMoveIndex
@@ -563,6 +564,7 @@ const rehydrateBoardFromSession = async (): Promise<void> => {
     board.value?.playOpponentSan(san)
   }
   await nextTick()
+  board.value?.setAnimationEnabled(true)
   if (isNewStepMove(s.state.value) && !demonstratedSteps.value.has(s.state.value.currentStep)) {
     const san = s.state.value.expectedSan
     showHintForExpected(formatBannerForSan('Neuer Zug – probiere ihn aus', san))
@@ -903,9 +905,11 @@ onMounted(() => {
       const reasonAfterUser = getResetReason(before, afterUser)
       if (reasonAfterUser !== null) {
         clearHintArrow()
+        board.value?.setAnimationEnabled(false)
         board.value?.reset()
         await nextTick()
-        await replayPrefixOntoBoard()
+        await replayPrefixOntoBoard(true)
+        board.value?.setAnimationEnabled(true)
         applyResetBannerForBridge(reasonAfterUser)
       } else if (
         currentLine.value
@@ -924,9 +928,11 @@ onMounted(() => {
           const reasonAfterOpponent = getResetReason(before, afterOpponent)
           if (reasonAfterOpponent !== null) {
             clearHintArrow()
+            board.value?.setAnimationEnabled(false)
             board.value?.reset()
             await nextTick()
-            await replayPrefixOntoBoard()
+            await replayPrefixOntoBoard(true)
+            board.value?.setAnimationEnabled(true)
             applyResetBannerForBridge(reasonAfterOpponent)
           }
         }
