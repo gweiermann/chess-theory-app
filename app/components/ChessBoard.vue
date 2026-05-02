@@ -106,6 +106,12 @@ const undoLastMove = (): void => {
   apiRef.value?.undoLastMove()
 }
 
+const setAnimationEnabled = (enabled: boolean): void => {
+  const cfg = { enabled, duration: enabled ? 200 : 0 }
+  boardConfig.animation = cfg
+  apiRef.value?.setConfig({ animation: cfg })
+}
+
 const resolveSanToSquares = (
   fen: string,
   san: string,
@@ -177,6 +183,7 @@ defineExpose({
   drawHintForSan,
   clearHints,
   refreshBounds,
+  setAnimationEnabled,
 })
 
 watch(
