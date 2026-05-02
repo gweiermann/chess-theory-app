@@ -9,12 +9,14 @@ interface Props {
   orientation?: Side
   playerColor?: Side
   autoOpponentDelayMs?: number
+  coordinatesInside?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   orientation: 'white',
   playerColor: 'white',
   autoOpponentDelayMs: 350,
+  coordinatesInside: false,
 })
 
 const emit = defineEmits<{
@@ -48,6 +50,7 @@ const boardConfig = {
   orientation: props.orientation,
   movable: { color: props.playerColor as Side | undefined },
   animation: { enabled: true, duration: 200 },
+  coordinates: props.coordinatesInside,
 }
 
 const handleBoardCreated = (api: BoardApi): void => {
@@ -204,19 +207,21 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="chessboard-shell">
+  <div class="chessboard-shell" :class="{ 'coordinates-inside': coordinatesInside }">
     <TheChessboard
       :board-config="boardConfig"
       :player-color="playerColor"
       @board-created="handleBoardCreated"
       @move="handleMove"
     />
-    <div class="files-overlay" aria-hidden="true">
-      <span v-for="file in fileLabels" :key="file">{{ file.toUpperCase() }}</span>
-    </div>
-    <div class="ranks-overlay" aria-hidden="true">
-      <span v-for="rank in rankLabels" :key="rank">{{ rank }}</span>
-    </div>
+    <template v-if="!coordinatesInside">
+      <div class="files-overlay" aria-hidden="true">
+        <span v-for="file in fileLabels" :key="file">{{ file.toUpperCase() }}</span>
+      </div>
+      <div class="ranks-overlay" aria-hidden="true">
+        <span v-for="rank in rankLabels" :key="rank">{{ rank }}</span>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -229,6 +234,12 @@ onBeforeUnmount(() => {
   margin-inline: auto;
   padding-left: 16px;
   padding-bottom: 16px;
+}
+
+.chessboard-shell.coordinates-inside {
+  padding-left: 0;
+  padding-bottom: 0;
+  max-width: 100%;
 }
 
 /*

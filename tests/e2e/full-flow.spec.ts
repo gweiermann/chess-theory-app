@@ -1084,3 +1084,95 @@ test('handleUserMove buffering: premove during opponent-in-flight is queued via 
     return !!s && s.currentStep === 2 && s.expectedMoveIndex === 1
   })
 })
+
+test('/learn/play has a back button that navigates to the previous page', async ({ page }) => {
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn\/play$/)
+  await page.waitForSelector('cg-board')
+
+  await page.getByTestId('play-back-button').click()
+  await expect(page).toHaveURL(/\/openings\/e4\/family\/italian-game$/)
+})
+
+test('/learn/play shows bottom action bar with all five buttons and no tab navigation', async ({
+  page,
+}) => {
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn\/play$/)
+  await page.waitForSelector('cg-board')
+
+  // All five action buttons present in the bottom bar
+  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Hilfe' })).toBeVisible()
+  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Zurück' })).toBeVisible()
+  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Vor' })).toBeVisible()
+  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Info' })).toBeVisible()
+  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Mehr' })).toBeVisible()
+
+  // Tab navigation bar is absent on the play screen
+  await expect(page.getByRole('navigation', { name: 'Hauptnavigation' })).toHaveCount(0)
+})
+
+test('/learn/play shows the phase label below the board', async ({ page }) => {
+  await setParentAutoplay(page, true)
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
+  await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+
+  const phaseLabel = page.getByTestId('play-phase-label')
+  await expect(phaseLabel).toBeVisible()
+  const text = await phaseLabel.textContent()
+  expect((text ?? '').trim().length).toBeGreaterThan(0)
+})
+
+test('/learn/play Überspringen quick-action skips the current line and advances to the next', async ({
+  page,
+}) => {
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
+  await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+
+  const initialId = await page.evaluate(
+    () => (window.__chessTheory!.currentLine() as { id: string }).id,
+  )
+
+  await page.getByRole('button', { name: 'Überspringen' }).first().click()
+
+  await page.waitForFunction(
+    (prev) => {
+      const cur = window.__chessTheory!.currentLine() as { id: string } | null
+      return !!cur && cur.id !== prev
+    },
+    initialId,
+    { timeout: 10_000 },
+  )
+  const nextId = await page.evaluate(
+    () => (window.__chessTheory!.currentLine() as { id: string }).id,
+  )
+  expect(nextId).not.toBe(initialId)
+})
+
+test('/learn/play progress indicator shows mastered/total for the current family', async ({
+  page,
+}) => {
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn\/play$/)
+  await page.waitForSelector('cg-board')
+
+  const progress = page.getByTestId('play-progress')
+  await expect(progress).toBeVisible()
+  const text = await progress.textContent()
+  // Format should be "N/M" with integers
+  expect(text?.trim()).toMatch(/^\d+\/\d+$/)
+})
