@@ -1024,7 +1024,7 @@ onBeforeUnmount(() => {
       <div v-else-if="session && currentLine" class="learn-layout">
         <!-- TOP BAR -->
         <div class="min-w-0 shrink-0 border-b border-(--ui-border)/50 bg-(--ui-bg)">
-          <!-- Single row: back | topic label | progress — all baseline-centered -->
+          <!-- Single row: back | topic label (centered) | progress -->
           <div class="flex items-center gap-2 px-2 py-2">
             <button
               class="shrink-0 -ml-1 rounded-lg p-1 text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
@@ -1032,10 +1032,10 @@ onBeforeUnmount(() => {
               data-testid="play-back-button"
               @click="goBack"
             >
-              <UIcon name="i-lucide-chevron-left" class="h-6 w-6" />
+              <UIcon name="i-lucide-chevron-left" class="h-7 w-7" />
             </button>
             <p
-              class="flex-1 truncate text-sm text-(--ui-text-muted)"
+              class="flex-1 truncate text-center text-sm text-(--ui-text-muted)"
               data-testid="play-topic-label"
             >
               {{ topic.label }}<template v-if="focusedFamilyName"> · {{ focusedFamilyName }}</template>
@@ -1048,7 +1048,7 @@ onBeforeUnmount(() => {
             </span>
           </div>
           <h1
-            class="line-clamp-2 px-4 pb-3 text-center text-lg font-semibold leading-snug"
+            class="line-clamp-2 px-4 pb-3 text-center text-xl font-semibold leading-snug"
             data-testid="learn-line-heading"
           >
             {{ displayLineName }}
@@ -1057,7 +1057,7 @@ onBeforeUnmount(() => {
 
         <!-- PHASE LABEL / BANNER SLOT (fixed height — board never moves) -->
         <div
-          class="shrink-0 relative h-11 overflow-hidden"
+          class="shrink-0 relative h-16 overflow-hidden"
           data-testid="play-phase-bar"
         >
           <!-- Phase label: always in DOM so toBeVisible() is stable -->
