@@ -199,18 +199,16 @@ const openFamily = (family: Family) => {
             <li
               v-for="family in section.families"
               :key="family.id"
+              class="cursor-pointer"
+              @click="openFamily(family)"
             >
-              <UCard :ui="{ root: 'h-full' }">
+              <UCard :ui="{ root: 'h-full transition-colors hover:bg-(--ui-bg-elevated)' }">
                 <div class="flex h-full flex-col gap-3">
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
-                      <button
-                        type="button"
-                        class="block w-full truncate text-left text-base font-semibold sm:text-lg"
-                        @click="openFamily(family)"
-                      >
+                      <p class="truncate text-base font-semibold sm:text-lg">
                         {{ family.name }}
-                      </button>
+                      </p>
                       <p class="mt-1 text-xs text-(--ui-text-muted)">
                         {{ family.lines.length }} Zugfolgen
                       </p>
@@ -234,18 +232,9 @@ const openFamily = (family: Family) => {
                       variant="soft"
                       icon="i-lucide-play"
                       :disabled="progressApi?.isFamilyMastered(family)"
-                      @click="learnFamily(family)"
+                      @click.stop="learnFamily(family)"
                     >
                       Üben
-                    </UButton>
-                    <UButton
-                      size="xs"
-                      color="neutral"
-                      variant="ghost"
-                      icon="i-lucide-list"
-                      @click="openFamily(family)"
-                    >
-                      Zugfolgen
                     </UButton>
                   </div>
                 </div>
