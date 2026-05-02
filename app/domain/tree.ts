@@ -77,6 +77,16 @@ export const buildFamilyTree = (lines: readonly Line[]): TreeNode => {
   return root
 }
 
+export const findNodeByPath = (root: TreeNode, path: string[]): TreeNode | null => {
+  let node = root
+  for (const label of path) {
+    const child = node.children.find((c) => c.label === label)
+    if (!child) return null
+    node = child
+  }
+  return node
+}
+
 export const flattenLineIdsInOrder = (node: TreeNode): string[] => {
   const out: string[] = []
   const visit = (n: TreeNode) => {

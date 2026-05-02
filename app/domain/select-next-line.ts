@@ -4,6 +4,7 @@ export type SelectionFocus =
   | { kind: 'topic' }
   | { kind: 'family'; familyId: string }
   | { kind: 'line'; lineId: string; exclusive?: boolean }
+  | { kind: 'node'; lineIds: string[] }
 
 const masteredIds = (progress: readonly LineProgress[]): Set<string> => {
   const set = new Set<string>()
@@ -68,6 +69,19 @@ export const selectLineForFocus = (
   progress: readonly LineProgress[],
 ): Line | null => {
   if (focus.kind === 'topic') return selectNextLine(topic, progress)
+
+  if (focus.kind === 'node') {
+    const mastered = masteredIds(progress)
+    for (const lineId of focus.lineIds) {
+      if (!mastered.has(lineId)) {
+        for (const family of topic.families) {
+          const line = family.lines.find((l) => l.id === lineId)
+          if (line) return line
+        }
+      }
+    }
+    return null
+  }
 
   if (focus.kind === 'family') {
     const family = topic.families.find((f) => f.id === focus.familyId)
