@@ -221,7 +221,7 @@ const findLine = (lineId: string) => {
               {{ findLine(currentNode.lineId)?.fullName ?? currentNode.label }}
             </p>
             <p v-if="findLine(currentNode.lineId)" class="mt-0.5 text-xs text-(--ui-text-muted)">
-              {{ findLine(currentNode.lineId)!.sanMoves.length }} Halbzüge
+              {{ findLine(currentNode.lineId)!.sanMoves.length }} Züge
             </p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
@@ -273,7 +273,7 @@ const findLine = (lineId: string) => {
                   v-if="findLine(child.lineId)"
                   class="mt-0.5 text-xs text-(--ui-text-muted)"
                 >
-                  {{ findLine(child.lineId)!.sanMoves.length }} Halbzüge
+                  {{ findLine(child.lineId)!.sanMoves.length }} Züge
                 </p>
               </div>
               <div class="flex shrink-0 items-center gap-2">
