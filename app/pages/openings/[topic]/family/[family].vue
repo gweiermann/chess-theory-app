@@ -116,7 +116,7 @@ const learnNode = () => {
   if (!topic.value || nodeLineIds.value.length === 0) return
   setSelection({
     topicId: topic.value.id,
-    focus: { kind: 'node', lineIds: nodeLineIds.value },
+    focus: { kind: 'node', lineIds: nodeLineIds.value, prefixLineId: currentNode.value?.lineId },
   })
   router.push('/learn/play')
 }
@@ -126,7 +126,7 @@ const learnChildNode = (child: TreeNode) => {
   const lineIds = flattenLineIdsInOrder(child)
   setSelection({
     topicId: topic.value.id,
-    focus: { kind: 'node', lineIds },
+    focus: { kind: 'node', lineIds, prefixLineId: child.lineId },
   })
   router.push('/learn/play')
 }

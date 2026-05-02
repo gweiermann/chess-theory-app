@@ -4,7 +4,7 @@ export type SelectionFocus =
   | { kind: 'topic' }
   | { kind: 'family'; familyId: string }
   | { kind: 'line'; lineId: string; exclusive?: boolean }
-  | { kind: 'node'; lineIds: string[] }
+  | { kind: 'node'; lineIds: string[]; prefixLineId?: string }
 
 const masteredIds = (progress: readonly LineProgress[]): Set<string> => {
   const set = new Set<string>()

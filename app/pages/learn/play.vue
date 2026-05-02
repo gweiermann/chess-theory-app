@@ -419,7 +419,19 @@ const startLine = (
   opponentInFlight = false
   currentLine.value = line
   const progress = progressApi.value?.progress.value ?? []
-  const parent = findParentLine(t, line, progress)
+
+  // When training from a tree node, use that node's own line as a forced
+  // prefix for all child lines — no mastery required, unlike findParentLine.
+  const focus = selection.value?.focus
+  let forcedParent: Line | null = null
+  if (focus?.kind === 'node' && focus.prefixLineId && focus.prefixLineId !== line.id) {
+    const candidate = t.families.flatMap((f) => f.lines).find((l) => l.id === focus.prefixLineId) ?? null
+    if (candidate && candidate.sanMoves.length > 0 && candidate.sanMoves.length < line.sanMoves.length) {
+      forcedParent = candidate
+    }
+  }
+
+  const parent = forcedParent ?? findParentLine(t, line, progress)
   parentLine.value = parent
   const hasRealParent =
     !!parent
