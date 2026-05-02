@@ -463,14 +463,12 @@ test('learn header shows the current line name and bottom controls stay icon-onl
   await page.waitForURL(/\/learn\/play$/)
   await page.waitForSelector('cg-board')
 
-  const lineName = await page.evaluate(() => {
-    const heading = document.querySelector('.learn-layout > div.min-w-0 > p')
-    return heading?.textContent?.trim() ?? ''
-  })
-  expect(lineName.length).toBeGreaterThan(0)
-  await expect(page.locator('.learn-layout > div.min-w-0 > p')).toContainText(lineName)
+  const topicLabel = page.getByTestId('play-topic-label')
+  await expect(topicLabel).toBeVisible()
+  const labelText = await topicLabel.textContent()
+  expect((labelText ?? '').trim().length).toBeGreaterThan(0)
   await expect(
-    page.locator('div.fixed.inset-x-0.bottom-\\[4\\.25rem\\]').getByText(lineName, { exact: true }),
+    page.locator('div.fixed.inset-x-0.bottom-\\[4\\.25rem\\]').getByText(labelText ?? '', { exact: true }),
   ).toHaveCount(0)
 })
 
@@ -844,7 +842,7 @@ test('the learn header renders topic/family in a <p> and the full line name in <
   await page.waitForURL(/\/learn\/play$/)
   await page.waitForSelector('cg-board')
 
-  const topicLabel = page.locator('.learn-layout > div.min-w-0 > p').first()
+  const topicLabel = page.getByTestId('play-topic-label')
   await expect(topicLabel).toContainText('e4')
   await expect(topicLabel).toContainText('Italian Game')
 
@@ -1096,7 +1094,7 @@ test('/learn/play has a back button that navigates to the previous page', async 
   await expect(page).toHaveURL(/\/openings\/e4\/family\/italian-game$/)
 })
 
-test('/learn/play shows bottom action bar with all five buttons and no tab navigation', async ({
+test('/learn/play action bar: Hilfe, Zurück, Vor, Neu starten, Mehr — no Info/clock, no tab nav', async ({
   page,
 }) => {
   await page.goto('/openings/e4/family/italian-game')
@@ -1105,18 +1103,72 @@ test('/learn/play shows bottom action bar with all five buttons and no tab navig
   await page.waitForURL(/\/learn\/play$/)
   await page.waitForSelector('cg-board')
 
-  // All five action buttons present in the bottom bar
-  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Hilfe' })).toBeVisible()
-  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Zurück' })).toBeVisible()
-  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Vor' })).toBeVisible()
-  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Info' })).toBeVisible()
-  await expect(page.getByTestId('play-action-bar').getByRole('button', { name: 'Mehr' })).toBeVisible()
-
+  const bar = page.getByTestId('play-action-bar')
+  await expect(bar.getByRole('button', { name: 'Hilfe' })).toBeVisible()
+  await expect(bar.getByRole('button', { name: 'Zurück' })).toBeVisible()
+  await expect(bar.getByRole('button', { name: 'Vor' })).toBeVisible()
+  await expect(bar.getByRole('button', { name: 'Neu starten' })).toBeVisible()
+  await expect(bar.getByRole('button', { name: 'Mehr' })).toBeVisible()
+  // clock/Info button replaced by restart
+  await expect(bar.getByRole('button', { name: 'Info' })).toHaveCount(0)
   // Tab navigation bar is absent on the play screen
   await expect(page.getByRole('navigation', { name: 'Hauptnavigation' })).toHaveCount(0)
 })
 
-test('/learn/play shows the phase label below the board', async ({ page }) => {
+test('/learn/play action bar buttons match normal nav bar height (icon + label, ~58px)', async ({
+  page,
+}) => {
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn\/play$/)
+  await page.waitForSelector('cg-board')
+
+  // Each action bar button must have a visible text label (matching the nav bar pattern)
+  const bar = page.getByTestId('play-action-bar')
+  for (const label of ['Hilfe', 'Zurück', 'Vor', 'Mehr']) {
+    const btn = bar.getByRole('button', { name: label })
+    await expect(btn.locator('span').filter({ hasText: label })).toBeVisible()
+  }
+  // "Neustart" is the visible label for the restart button (aria-label is "Neu starten")
+  const restartBtn = bar.getByRole('button', { name: 'Neu starten' })
+  await expect(restartBtn.locator('span').filter({ hasText: 'Neustart' })).toBeVisible()
+
+  // Bar buttons should be at least 55px tall to match the ~58px normal nav bar items
+  const btnHeight = await bar.getByRole('button', { name: 'Hilfe' }).evaluate(
+    (el) => (el as HTMLElement).offsetHeight,
+  )
+  expect(btnHeight).toBeGreaterThanOrEqual(55)
+})
+
+test('/learn/play chessboard has no rounded corners', async ({ page }) => {
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn\/play$/)
+  await page.waitForSelector('cg-board')
+
+  const borderRadius = await page.evaluate(() => {
+    const el = document.querySelector('.main-board') as HTMLElement | null
+    if (!el) return null
+    return window.getComputedStyle(el).borderRadius
+  })
+  expect(borderRadius).toBe('0px')
+})
+
+test('/learn/play phase bar shows text only — no quick-action buttons', async ({ page }) => {
+  await page.goto('/openings/e4/family/italian-game')
+  const firstRow = page.locator('ul > li').first()
+  await firstRow.getByRole('button', { name: 'Üben' }).click()
+  await page.waitForURL(/\/learn\/play$/)
+  await page.goto('/learn/play?e2e=1')
+  await page.waitForFunction(() => Boolean(window.__chessTheory?.currentLine?.()))
+
+  const phaseBar = page.getByTestId('play-phase-bar')
+  await expect(phaseBar.getByRole('button')).toHaveCount(0)
+})
+
+test('/learn/play shows the phase label above the board', async ({ page }) => {
   await setParentAutoplay(page, true)
   await page.goto('/openings/e4/family/italian-game')
   const firstRow = page.locator('ul > li').first()
@@ -1131,7 +1183,7 @@ test('/learn/play shows the phase label below the board', async ({ page }) => {
   expect((text ?? '').trim().length).toBeGreaterThan(0)
 })
 
-test('/learn/play Überspringen quick-action skips the current line and advances to the next', async ({
+test('/learn/play Überspringen in the Mehr sheet skips the current line and advances to the next', async ({
   page,
 }) => {
   await page.goto('/openings/e4/family/italian-game')
@@ -1145,7 +1197,9 @@ test('/learn/play Überspringen quick-action skips the current line and advances
     () => (window.__chessTheory!.currentLine() as { id: string }).id,
   )
 
-  await page.getByRole('button', { name: 'Überspringen' }).first().click()
+  // Überspringen is in the "···" action sheet, not the phase bar
+  await page.getByTestId('play-action-bar').getByRole('button', { name: 'Mehr' }).click()
+  await page.getByRole('button', { name: 'Überspringen' }).click()
 
   await page.waitForFunction(
     (prev) => {

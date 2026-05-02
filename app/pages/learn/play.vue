@@ -162,6 +162,15 @@ const phaseLabel = computed(() => {
   }
 })
 
+// Strip everything before and including the first colon so the h1 only shows
+// the variation name ("Dutch Variation, Batavo Gambit") — the family name
+// ("Bird Opening") is already shown in the topic label row above.
+const displayLineName = computed(() => {
+  const name = currentLine.value?.fullName ?? ''
+  const idx = name.indexOf(':')
+  return idx === -1 ? name : name.slice(idx + 1).trim()
+})
+
 const isOpponentTurn = (line: Line, expectedIndex: number): boolean => {
   if (expectedIndex >= line.sanMoves.length) return false
   const moveSide = expectedIndex % 2 === 0 ? 'white' : 'black'
@@ -1013,81 +1022,91 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else-if="session && currentLine" class="learn-layout">
-        <!-- TOP BAR: div.min-w-0 is a direct child for selector compatibility -->
+        <!-- TOP BAR -->
         <div class="min-w-0 shrink-0 border-b border-(--ui-border)/50 bg-(--ui-bg)">
-          <div class="flex items-center gap-1 px-1 pt-1">
-            <UButton
-              icon="i-lucide-chevron-left"
-              variant="ghost"
-              color="neutral"
-              size="sm"
-              class="-ml-0.5 shrink-0"
+          <!-- Single row: back | topic label | progress — all baseline-centered -->
+          <div class="flex items-center gap-2 px-2 py-2">
+            <button
+              class="shrink-0 -ml-1 rounded-lg p-1 text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
               aria-label="Verlassen"
               data-testid="play-back-button"
               @click="goBack"
-            />
-            <div class="flex-1" />
-            <div
-              class="flex shrink-0 flex-col items-end gap-0.5 pr-2"
+            >
+              <UIcon name="i-lucide-chevron-left" class="h-6 w-6" />
+            </button>
+            <p
+              class="flex-1 truncate text-sm text-(--ui-text-muted)"
+              data-testid="play-topic-label"
+            >
+              {{ topic.label }}<template v-if="focusedFamilyName"> · {{ focusedFamilyName }}</template>
+            </p>
+            <span
+              class="shrink-0 tabular-nums text-sm text-(--ui-text-muted)"
               data-testid="play-progress"
             >
-              <span class="tabular-nums text-xs text-(--ui-text-muted)">
-                {{ masteredCount }}/{{ totalLineCount }}
-              </span>
-              <div class="h-1 w-10 overflow-hidden rounded-full bg-(--ui-bg-elevated)">
-                <div
-                  class="h-full rounded-full bg-(--ui-primary) transition-[width] duration-500"
-                  :style="{ width: `${masteredPercent}%` }"
-                />
-              </div>
-            </div>
+              {{ masteredCount }}/{{ totalLineCount }}
+            </span>
           </div>
-          <p class="truncate px-3 pb-0.5 text-xs uppercase tracking-widest text-(--ui-text-muted)">
-            {{ topic.label }}<template v-if="focusedFamilyName"> · {{ focusedFamilyName }}</template>
-          </p>
           <h1
-            class="truncate px-3 pb-2 text-sm font-semibold leading-tight"
+            class="line-clamp-2 px-4 pb-3 text-center text-lg font-semibold leading-snug"
             data-testid="learn-line-heading"
           >
-            {{ currentLine.fullName }}
+            {{ displayLineName }}
           </h1>
         </div>
 
-        <!-- BANNER (reserved slot so board position never shifts) -->
-        <div class="shrink-0 min-h-[2.5rem] px-3 py-1">
+        <!-- PHASE LABEL / BANNER SLOT (fixed height — board never moves) -->
+        <div
+          class="shrink-0 relative h-11 overflow-hidden"
+          data-testid="play-phase-bar"
+        >
+          <!-- Phase label: always in DOM so toBeVisible() is stable -->
+          <div class="absolute inset-0 flex items-center px-4">
+            <span
+              class="flex-1 truncate text-sm font-medium text-(--ui-primary)"
+              data-testid="play-phase-label"
+            >
+              {{ phaseLabel }}
+            </span>
+          </div>
+          <!-- Banner: covers phase label when active, same fixed height -->
           <Transition
-            enter-active-class="transition duration-150"
-            leave-active-class="transition duration-150"
-            enter-from-class="-translate-y-1 opacity-0"
-            leave-to-class="-translate-y-1 opacity-0"
+            enter-active-class="transition duration-100"
+            leave-active-class="transition duration-100"
+            enter-from-class="opacity-0"
+            leave-to-class="opacity-0"
           >
             <div
               v-if="banner && bannerPreset"
-              :class="[
-                'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
-                bannerPreset.classes,
-              ]"
+              class="absolute inset-0 flex items-center bg-(--ui-bg) px-3"
               role="status"
               aria-live="polite"
               :data-banner-kind="banner.kind"
             >
-              <UIcon :name="bannerPreset.icon" class="h-4 w-4 shrink-0" />
-              <span class="min-w-0 flex-1">{{ banner.text }}</span>
-              <UButton
-                v-if="session.state.value.phase === 'intro' && parentLine"
-                color="info"
-                variant="link"
-                size="xs"
-                class="h-auto p-0 text-xs whitespace-nowrap"
-                @click="goToForgottenParent"
+              <div
+                :class="[
+                  'flex w-full items-center gap-2 rounded-lg border px-3 py-1.5 text-sm',
+                  bannerPreset.classes,
+                ]"
               >
-                Hab ich vergessen
-              </UButton>
+                <UIcon :name="bannerPreset.icon" class="h-4 w-4 shrink-0" />
+                <span class="min-w-0 flex-1 truncate">{{ banner.text }}</span>
+                <UButton
+                  v-if="session.state.value.phase === 'intro' && parentLine"
+                  color="info"
+                  variant="link"
+                  size="xs"
+                  class="h-auto p-0 text-xs whitespace-nowrap"
+                  @click="goToForgottenParent"
+                >
+                  Hab ich vergessen
+                </UButton>
+              </div>
             </div>
           </Transition>
         </div>
 
-        <!-- BOARD: full width, coordinates rendered inside the squares -->
+        <!-- BOARD: plain, no overlay -->
         <div class="shrink-0">
           <ChessBoard
             ref="board"
@@ -1098,80 +1117,56 @@ onBeforeUnmount(() => {
           />
         </div>
 
-        <!-- PHASE INFO + QUICK ACTIONS -->
-        <div
-          class="shrink-0 flex items-center gap-1 border-t border-(--ui-border)/40 px-3 py-2"
-          data-testid="play-phase-bar"
-        >
-          <span
-            class="flex-1 truncate text-sm text-(--ui-text-muted)"
-            data-testid="play-phase-label"
-          >
-            {{ phaseLabel }}
-          </span>
-          <UButton
-            icon="i-lucide-skip-forward"
-            color="neutral"
-            variant="ghost"
-            size="xs"
-            aria-label="Überspringen"
-            @click="skipLine"
-          />
-          <UButton
-            icon="i-lucide-rotate-ccw"
-            color="neutral"
-            variant="ghost"
-            size="xs"
-            aria-label="Neu starten"
-            @click="restartLine"
-          />
-        </div>
-
-        <!-- BOTTOM ACTION BAR (takes the place of the nav bar) -->
+        <!-- BOTTOM ACTION BAR (takes the place of the nav bar, matches normal nav height) -->
         <div
           class="mt-auto border-t border-(--ui-border) bg-(--ui-bg)/95 backdrop-blur"
           style="padding-bottom: env(safe-area-inset-bottom)"
           data-testid="play-action-bar"
         >
-          <div class="flex items-center justify-around px-2 py-1.5">
-            <UButton
-              color="primary"
-              variant="ghost"
-              icon="i-lucide-lightbulb"
+          <div class="flex items-stretch justify-around">
+            <button
+              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-primary) transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="hintActive"
               aria-label="Hilfe"
               @click="showHelp"
-            />
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-chevron-left"
+            >
+              <UIcon name="i-lucide-lightbulb" class="h-5 w-5" />
+              <span>Hilfe</span>
+            </button>
+            <button
+              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:text-(--ui-text)"
               :disabled="!canGoBackward"
               aria-label="Zurück"
               @click="goMoveHistory(-1)"
-            />
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-chevron-right"
+            >
+              <UIcon name="i-lucide-chevron-left" class="h-5 w-5" />
+              <span>Zurück</span>
+            </button>
+            <button
+              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:text-(--ui-text)"
               :disabled="!canGoForward"
               aria-label="Vor"
               @click="goMoveHistory(1)"
-            />
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-clock"
-              aria-label="Info"
-              @click="showInfoModal = true"
-            />
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-ellipsis"
+            >
+              <UIcon name="i-lucide-chevron-right" class="h-5 w-5" />
+              <span>Vor</span>
+            </button>
+            <button
+              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
+              aria-label="Neu starten"
+              @click="restartLine"
+            >
+              <UIcon name="i-lucide-rotate-ccw" class="h-5 w-5" />
+              <span>Neustart</span>
+            </button>
+            <button
+              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
               aria-label="Mehr"
               @click="showActionSheet = true"
-            />
+            >
+              <UIcon name="i-lucide-ellipsis" class="h-5 w-5" />
+              <span>Mehr</span>
+            </button>
           </div>
         </div>
       </div>
