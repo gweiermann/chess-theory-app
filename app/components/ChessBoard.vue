@@ -258,7 +258,6 @@ onBeforeUnmount(() => {
 
 .chessboard-shell :deep(.main-board) {
   width: 100%;
-  border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.4);
 }
