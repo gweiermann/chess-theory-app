@@ -45,7 +45,8 @@ const pathSegments = computed<string[]>(() => {
 const currentNode = computed<TreeNode | null>(() => {
   const f = family.value
   if (!f) return null
-  return findNodeByPath(f.tree, pathSegments.value) ?? f.tree
+  if (pathSegments.value.length === 0) return f.tree
+  return findNodeByPath(f.tree, pathSegments.value)
 })
 
 const nodeLineIds = computed<string[]>(() => {
@@ -206,6 +207,7 @@ const confirmLearnAnyway = () => {
 </script>
 
 <template>
+  <div>
   <div class="mx-auto w-full max-w-5xl px-4 py-6 sm:py-8">
     <!-- Breadcrumb -->
     <nav class="mb-4 flex flex-wrap items-center gap-1 text-sm text-(--ui-text-muted) sm:mb-6">
@@ -488,4 +490,5 @@ const confirmLearnAnyway = () => {
       </div>
     </template>
   </UModal>
+  </div>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTopic } from '~/composables/useTopic'
 import { useTopicProgress } from '~/composables/useTopicProgress'
@@ -20,6 +20,7 @@ import {
   type PhaseMarkers,
   type ResetReason,
 } from '~/domain/learn-banner'
+import { isOpponentPly } from '~/domain/training-turn'
 import type { Line, LineProgress, Topic } from '~/domain/types'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
 
@@ -57,7 +58,9 @@ const BANNER_PRESETS: Record<BannerKind, { classes: string; icon: string }> = {
 const router = useRouter()
 const goBack = () => router.back()
 const { $repositories } = useNuxtApp()
-const { selection, set: setSelection } = useCurrentSelection()
+const { selection, set: setSelection, refresh: refreshSelection } = useCurrentSelection()
+/** Re-read persisted selection so /learn/play matches storage (singleton composable can be stale across navigations). */
+refreshSelection()
 const learnState = useLearnState()
 const { autoPlayParentPrefix } = useProfileSettings()
 
@@ -156,17 +159,20 @@ const masteredCount = computed(() => {
   return progressApi.value?.progress.value.filter((p) => p.status === 'mastered' && ids.has(p.lineId)).length ?? 0
 })
 const totalLineCount = computed(() => progressScopedLines.value.length)
-const masteredPercent = computed(() =>
-  totalLineCount.value > 0 ? Math.round((masteredCount.value / totalLineCount.value) * 100) : 0,
-)
 const phaseLabel = computed(() => {
   const s = session.value?.state.value
   if (!s) return ''
   switch (s.phase) {
-    case 'intro': return 'Einführung'
-    case 'building': return `Aufbau · Schritt ${s.currentStep} von ${s.totalSteps}`
-    case 'repeating': return `Wiederholung · ${s.repsDone + 1} von ${TARGET_REPS}`
-    case 'done': return 'Fertig'
+    case 'intro':
+      return 'Einführung'
+    case 'building':
+      return `Aufbau · Schritt ${s.currentStep} von ${s.totalSteps}`
+    case 'repeating':
+      return `Wiederholung · ${s.repsDone + 1} von ${TARGET_REPS}`
+    case 'done':
+      return 'Fertig'
+    default:
+      return ''
   }
 })
 
@@ -178,12 +184,6 @@ const displayLineName = computed(() => {
   const idx = name.indexOf(':')
   return idx === -1 ? name : name.slice(idx + 1).trim()
 })
-
-const isOpponentTurn = (line: Line, expectedIndex: number): boolean => {
-  if (expectedIndex >= line.sanMoves.length) return false
-  const moveSide = expectedIndex % 2 === 0 ? 'white' : 'black'
-  return moveSide !== line.userSide
-}
 
 const cancelMistakeTimer = (): void => {
   if (mistakeTimer !== null) {
@@ -277,7 +277,7 @@ const playOpponentIfNeeded = async (): Promise<void> => {
     && state.phase !== 'building'
     && state.phase !== 'repeating'
   ) return
-  if (!isOpponentTurn(line, state.expectedMoveIndex)) return
+  if (!isOpponentPly(line, state.expectedMoveIndex)) return
   const opponentSan = line.sanMoves[state.expectedMoveIndex]
   if (!opponentSan) return
 
@@ -325,7 +325,7 @@ const playOpponentIfNeeded = async (): Promise<void> => {
   const nextState = s.state.value
   if (
     nextState.phase !== 'done'
-    && isOpponentTurn(line, nextState.expectedMoveIndex)
+    && isOpponentPly(line, nextState.expectedMoveIndex)
   ) {
     await playOpponentIfNeeded()
   }
@@ -867,150 +867,13 @@ const goToOpenings = (): void => {
   void router.push('/openings')
 }
 
-declare global {
-  interface Window {
-    __chessTheory?: {
-      submit(san: string): Promise<{ result: string; expected?: string }>
-      state(): unknown
-      currentLine(): { id: string; fullName: string } | null
-      mastered(): string[]
-      reset(): Promise<void>
-      hint(): {
-        active: boolean
-        banner: string | null
-        bannerKind: BannerKind | null
-        demonstratedSteps: number[]
-      }
-      requestHelp(): boolean
-    }
-  }
-}
-
-const e2eEnabled = computed(() =>
-  typeof window !== 'undefined'
-  && new URL(window.location.href).searchParams.get('e2e') === '1',
-)
-
-onMounted(() => {
-  if (typeof window === 'undefined' || !e2eEnabled.value) return
-  const applyResetBannerForBridge = (reason: ResetReason): void => {
-    const after = markers()
-    if (!after) return
-    const next = bannerForResetReason(reason, after)
-    setBanner(next.kind, next.text)
-  }
-
-  window.__chessTheory = {
-    submit: async (san) => {
-      const s = session.value
-      if (!s) return { result: 'no-session' }
-      const before = markers()
-      if (!before) return { result: 'no-session' }
-      const wasNewStepMove = isNewStepMove(s.state.value)
-      const r = await s.submit(san)
-      if (r.result === 'wrong') {
-        showMistakeBanner()
-        return { result: 'wrong', expected: r.expected }
-      }
-      board.value?.playOpponentSan(san)
-      clearHintArrow()
-      clearEphemeralBanner()
-      if (wasNewStepMove) demonstratedSteps.value.add(before.currentStep)
-
-      const afterUser = markers()!
-
-      if (afterUser.phase === 'done') {
-        finalizeMastery()
-        broadenSelectionAfterCompletion()
-        return { result: 'correct' }
-      }
-
-      const reasonAfterUser = getResetReason(before, afterUser)
-      if (reasonAfterUser !== null) {
-        clearHintArrow()
-        board.value?.setAnimationEnabled(false)
-        board.value?.reset()
-        await nextTick()
-        await replayPrefixOntoBoard(true)
-        board.value?.setAnimationEnabled(true)
-        applyResetBannerForBridge(reasonAfterUser)
-      } else if (
-        currentLine.value
-        && isOpponentTurn(currentLine.value, s.state.value.expectedMoveIndex)
-      ) {
-        const opponentSan = currentLine.value.sanMoves[s.state.value.expectedMoveIndex]
-        if (opponentSan) {
-          board.value?.playOpponentSan(opponentSan)
-          await s.submit(opponentSan)
-          const afterOpponent = markers()!
-          if (afterOpponent.phase === 'done') {
-            finalizeMastery()
-            broadenSelectionAfterCompletion()
-            return { result: 'correct' }
-          }
-          const reasonAfterOpponent = getResetReason(before, afterOpponent)
-          if (reasonAfterOpponent !== null) {
-            clearHintArrow()
-            board.value?.setAnimationEnabled(false)
-            board.value?.reset()
-            await nextTick()
-            await replayPrefixOntoBoard(true)
-            board.value?.setAnimationEnabled(true)
-            applyResetBannerForBridge(reasonAfterOpponent)
-          }
-        }
-      }
-
-      showHintIfNewStep()
-      return { result: 'correct' }
-    },
-    state: () => session.value?.state.value ?? null,
-    currentLine: () =>
-      currentLine.value
-        ? { id: currentLine.value.id, fullName: currentLine.value.fullName }
-        : null,
-    mastered: () => {
-      try {
-        const raw = window.localStorage.getItem('chess-theory:v1:progress')
-        if (!raw) return []
-        const shape = JSON.parse(raw) as {
-          byTopic?: Record<string, Record<string, { status?: string }>>
-        }
-        const out: string[] = []
-        for (const topicEntries of Object.values(shape.byTopic ?? {})) {
-          for (const [lineId, entry] of Object.entries(topicEntries)) {
-            if (entry?.status === 'mastered') out.push(lineId)
-          }
-        }
-        return out
-      } catch {
-        return []
-      }
-    },
-    reset: async () => {
-      window.localStorage.removeItem('chess-theory:v1:progress')
-      if (topic.value) startNextLine(topic.value)
-    },
-    hint: () => ({
-      active: hintActive.value,
-      banner: banner.value?.text ?? null,
-      bannerKind: banner.value?.kind ?? null,
-      demonstratedSteps: Array.from(demonstratedSteps.value),
-    }),
-    requestHelp: () => {
-      const san = session.value?.state.value.expectedSan ?? null
-      return showHintForExpected(formatBannerForSan('Hilfe – nächster Zug', san))
-    },
-  }
-})
-
 onBeforeUnmount(() => {
   cancelMistakeTimer()
-  if (typeof window !== 'undefined') delete window.__chessTheory
 })
 </script>
 
 <template>
+  <div class="flex min-h-0 flex-1 flex-col">
   <!-- Empty state -->
   <div v-if="!selection" class="flex flex-1 items-center justify-center p-6">
     <div class="rounded-xl border border-(--ui-border) p-6 text-center">
@@ -1082,6 +945,7 @@ onBeforeUnmount(() => {
           >
             {{ displayLineName }}
           </h1>
+          <span class="sr-only" data-testid="play-line-id">{{ currentLine.id }}</span>
         </div>
 
         <!-- PHASE LABEL / BANNER SLOT (fixed height — board never moves) -->
@@ -1254,6 +1118,7 @@ onBeforeUnmount(() => {
       </UModal>
     </template>
   </template>
+  </div>
 </template>
 
 <style scoped>

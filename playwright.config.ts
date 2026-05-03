@@ -1,9 +1,15 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const E2E_MAX_WAIT_MS = 2000
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
-  fullyParallel: false,
+  expect: {
+    timeout: E2E_MAX_WAIT_MS,
+  },
+  // Each test gets its own browser context; chess-app.fixture clears storage once per context.
+  fullyParallel: true,
   retries: 0,
   reporter: 'list',
   use: {

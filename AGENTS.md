@@ -7,8 +7,11 @@
 
 - Always try to reuse components if possible and stick to app patterns
 - Always try to use best practices for UI/UX design.
-- Always create small and readable components and outsource big script logic as a composable
-- never use german terms in code, only leak german into ui facing 
+- Always create small and readable components
+- Make use of composables as often as possible
+- Never use german identifiers nor enum strings in code
+- Use atomic design
+- Use clean code principles
 
 # Rules
 
@@ -16,7 +19,8 @@
 - Always first analyze the problem before you start
 - Always ask if something is not clear to you
 - For clarification there is a docs/glossary.md to align on terms.
-- There is no legacy code, always ensure code follows standards and always be proactive on refactorings. For bigger refactorings ask first
-- maintain and refactor docs/prd.md. Everytime you implement a request/decision, update it accordingly
+- There is no legacy code, no need to deprecate things, always ensure code follows standards and always be proactive on refactorings. For bigger refactorings ask first
+- Maintain and refactor docs/prd.md. Everytime you implement a request/decision, update it accordingly
 - Always verify UI/UX changes by running a browser and testing the new feature
-- Always write new tests for new features
+- Always use tdd: write one failing test, make it pass, refactor, repeat
+- Always add regression tests
