@@ -10,16 +10,14 @@ import {
 } from '~/composables/training-session'
 import { useProfileSettings } from '~/composables/useProfileSettings'
 import { findParentLine, selectLineForFocus } from '~/domain/select-next-line'
-import { isNewStepMove, TARGET_REPS } from '~/domain/session'
 import {
-  MISTAKE_BANNER_TEXT,
-  bannerForResetReason,
   getResetReason,
+  isNewStepMove,
   willMoveTriggerReset,
-  type BannerKind,
+  TARGET_REPS,
   type PhaseMarkers,
   type ResetReason,
-} from '~/domain/learn-banner'
+} from '~/domain/session'
 import type { Line, LineProgress, Topic } from '~/domain/types'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
 
@@ -28,31 +26,7 @@ definePageMeta({ layout: 'play' })
 const OPPONENT_DELAY_MS = 350
 const STEP_RESET_DELAY_MS = 600
 const NEXT_LINE_DELAY_MS = 1500
-const MISTAKE_BANNER_MS = 1800
 const PREFIX_REPLAY_DELAY_MS = 120
-
-const BANNER_PRESETS: Record<BannerKind, { classes: string; icon: string }> = {
-  'hint': {
-    classes: 'border-(--ui-primary)/30 bg-(--ui-primary)/10 text-(--ui-primary)',
-    icon: 'i-lucide-lightbulb',
-  },
-  'memory': {
-    classes: 'border-(--ui-info)/30 bg-(--ui-info)/10 text-(--ui-info)',
-    icon: 'i-lucide-brain',
-  },
-  'setup-complete': {
-    classes: 'border-(--ui-success)/30 bg-(--ui-success)/10 text-(--ui-success)',
-    icon: 'i-lucide-check-circle-2',
-  },
-  'motivation': {
-    classes: 'border-(--ui-success)/30 bg-(--ui-success)/10 text-(--ui-success)',
-    icon: 'i-lucide-sparkles',
-  },
-  'mistake': {
-    classes: 'border-(--ui-error)/30 bg-(--ui-error)/10 text-(--ui-error)',
-    icon: 'i-lucide-alert-circle',
-  },
-}
 
 const router = useRouter()
 const goBack = () => router.back()
@@ -66,10 +40,8 @@ const { topic, loading, error } = useTopic(topicIdRef)
 
 const {
   currentLine,
-  parentLine,
   session,
   demonstratedSteps,
-  banner,
   allMastered,
 } = learnState
 
@@ -81,7 +53,6 @@ const showInfoModal = ref(false)
 const showActionSheet = ref(false)
 const flowLocked = ref(false)
 const viewedPly = ref<number | null>(null)
-let mistakeTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
  * Premove buffer. Chessground auto-applies a queued premove SYNCHRONOUSLY
@@ -93,9 +64,6 @@ let mistakeTimer: ReturnType<typeof setTimeout> | null = null
 let opponentInFlight = false
 let pendingUserMove: string | null = null
 
-const bannerPreset = computed(() =>
-  banner.value ? BANNER_PRESETS[banner.value.kind] : null,
-)
 
 const currentFamily = computed(() => {
   const line = currentLine.value
@@ -185,40 +153,9 @@ const isOpponentTurn = (line: Line, expectedIndex: number): boolean => {
   return moveSide !== line.userSide
 }
 
-const cancelMistakeTimer = (): void => {
-  if (mistakeTimer !== null) {
-    clearTimeout(mistakeTimer)
-    mistakeTimer = null
-  }
-}
-
 const setBoardLocked = (locked: boolean): void => {
   flowLocked.value = locked
   board.value?.setLocked(flowLocked.value || isReplayMode.value)
-}
-
-const setBanner = (kind: BannerKind, text: string): void => {
-  cancelMistakeTimer()
-  banner.value = { kind, text }
-}
-
-const clearBanner = (): void => {
-  cancelMistakeTimer()
-  banner.value = null
-}
-
-/**
- * Clear only banner kinds that should disappear on the next successful move
- * (the hint and mistake banners). The "memory", "setup-complete" and
- * "motivation" banners must survive individual moves so the user keeps
- * seeing the context while they replay moves from memory.
- */
-const clearEphemeralBanner = (): void => {
-  const current = banner.value
-  if (!current) return
-  if (current.kind === 'hint' || current.kind === 'mistake') {
-    clearBanner()
-  }
 }
 
 const clearHintArrow = (): void => {
@@ -227,27 +164,14 @@ const clearHintArrow = (): void => {
   hintActive.value = false
 }
 
-const clearHint = (): void => {
-  clearHintArrow()
-  clearBanner()
-}
-
-const showHintForExpected = (bannerText: string | null = null): boolean => {
+const showHintForExpected = (): boolean => {
   const s = session.value
   if (!s) return false
   const san = s.state.value.expectedSan
   if (!san) return false
   const ok = board.value?.drawHintForSan(san) ?? false
-  if (ok) {
-    hintActive.value = true
-    if (bannerText !== null) setBanner('hint', bannerText)
-  }
+  if (ok) hintActive.value = true
   return ok
-}
-
-const formatBannerForSan = (prefix: string, san: string | null): string => {
-  if (!san) return prefix
-  return `${prefix}: ${san}`
 }
 
 const showHintIfNewStep = (): void => {
@@ -255,16 +179,7 @@ const showHintIfNewStep = (): void => {
   if (!s) return
   if (!isNewStepMove(s.state.value)) return
   if (demonstratedSteps.value.has(s.state.value.currentStep)) return
-  const san = s.state.value.expectedSan
-  showHintForExpected(formatBannerForSan('Neuer Zug – probiere ihn aus', san))
-}
-
-const showMistakeBanner = (): void => {
-  setBanner('mistake', MISTAKE_BANNER_TEXT)
-  mistakeTimer = setTimeout(() => {
-    mistakeTimer = null
-    if (banner.value?.kind === 'mistake') banner.value = null
-  }, MISTAKE_BANNER_MS)
+  showHintForExpected()
 }
 
 const playOpponentIfNeeded = async (): Promise<void> => {
@@ -364,18 +279,9 @@ const markers = (): PhaseMarkers | null => {
   }
 }
 
-const resetBoardForNextAttempt = async (
-  reason: ResetReason | null = null,
-): Promise<void> => {
+const resetBoardForNextAttempt = async (): Promise<void> => {
   isResetting.value = true
   clearHintArrow()
-  const after = markers()
-  if (reason !== null && after !== null) {
-    const next = bannerForResetReason(reason, after)
-    setBanner(next.kind, next.text)
-  } else {
-    clearBanner()
-  }
   board.value?.setAnimationEnabled(false)
   board.value?.reset()
   await nextTick()
@@ -386,15 +292,6 @@ const resetBoardForNextAttempt = async (
   showHintIfNewStep()
   setBoardLocked(false)
 }
-
-/**
- * Compose the intro banner text. Real parent lines get the full name
- * ("Spiele die Eröffnung 'X' bis zur Grundposition"). For lines whose only
- * prefix is the topic's own first move (e.g. e4) we surface a terser
- * prompt asking the user to play that one move.
- */
-const introBannerText = (parent: Line): string =>
-  `Spiele die Eröffnung "${parent.fullName}" bis zur Grundposition`
 
 const startLine = (
   t: Topic,
@@ -445,7 +342,6 @@ const startLine = (
       return (idx % 2 === 0) === (line.userSide === 'white')
     })
   const parent = rawParent && hasUserMoveAfterPrefix(rawParent) ? rawParent : null
-  parentLine.value = parent
   const hasRealParent =
     !!parent
     && parent.sanMoves.length > 0
@@ -487,15 +383,8 @@ const startLine = (
     skipIntro,
   })
   demonstratedSteps.value = new Set()
-  clearHint()
+  clearHintArrow()
   setBoardLocked(true)
-
-  if (runsIntro) {
-    setBanner(
-      'memory',
-      introBannerText(parent!),
-    )
-  }
 
   setTimeout(async () => {
     board.value?.setAnimationEnabled(false)
@@ -543,7 +432,6 @@ const startNextLine = (t: Topic): void => {
   if (!progressApi.value || !selection.value) {
     allMastered.value = false
     currentLine.value = null
-    parentLine.value = null
     session.value = null
     return
   }
@@ -555,7 +443,6 @@ const startNextLine = (t: Topic): void => {
   if (!next) {
     allMastered.value = true
     currentLine.value = null
-    parentLine.value = null
     session.value = null
     return
   }
@@ -589,8 +476,7 @@ const rehydrateBoardFromSession = async (): Promise<void> => {
   await nextTick()
   board.value?.setAnimationEnabled(true)
   if (isNewStepMove(s.state.value) && !demonstratedSteps.value.has(s.state.value.currentStep)) {
-    const san = s.state.value.expectedSan
-    showHintForExpected(formatBannerForSan('Neuer Zug – probiere ihn aus', san))
+    showHintForExpected()
   }
   setBoardLocked(false)
 }
@@ -695,7 +581,6 @@ const processUserMove = async (san: string): Promise<void> => {
   const result = await s.submit(san)
 
   if (result.result === 'wrong') {
-    showMistakeBanner()
     setBoardLocked(true)
     setTimeout(() => {
       board.value?.undoLastMove()
@@ -705,7 +590,6 @@ const processUserMove = async (san: string): Promise<void> => {
   }
 
   clearHintArrow()
-  clearEphemeralBanner()
   if (wasNewStepMove) demonstratedSteps.value.add(before.currentStep)
 
   const afterUser = markers()!
@@ -721,7 +605,7 @@ const processUserMove = async (san: string): Promise<void> => {
   const reasonAfterUser = getResetReason(before, afterUser)
   if (reasonAfterUser !== null) {
     setBoardLocked(true)
-    setTimeout(() => resetBoardForNextAttempt(reasonAfterUser), STEP_RESET_DELAY_MS)
+    setTimeout(() => resetBoardForNextAttempt(), STEP_RESET_DELAY_MS)
     return
   }
 
@@ -739,7 +623,7 @@ const processUserMove = async (san: string): Promise<void> => {
   const reasonAfterOpponent = getResetReason(before, afterOpponent)
   if (reasonAfterOpponent !== null) {
     setBoardLocked(true)
-    setTimeout(() => resetBoardForNextAttempt(reasonAfterOpponent), STEP_RESET_DELAY_MS)
+    setTimeout(() => resetBoardForNextAttempt(), STEP_RESET_DELAY_MS)
     return
   }
 
@@ -776,22 +660,6 @@ const restartLine = () => {
   startLine(topic.value, currentLine.value)
 }
 
-const goToParent = () => {
-  const t = topic.value
-  const parent = parentLine.value
-  if (!t || !parent) return
-  // The parent is by definition mastered; `exclusive: true` tells
-  // selectLineForFocus to return it as-is instead of auto-advancing past it.
-  setSelection({
-    topicId: t.id,
-    focus: { kind: 'line', lineId: parent.id, exclusive: true },
-  })
-  startLine(t, parent)
-}
-
-const goToForgottenParent = (): void => {
-  goToParent()
-}
 
 const orderedTopicLines = (t: Topic): Line[] =>
   t.families.flatMap((family) => family.lines)
@@ -849,8 +717,7 @@ const goMoveHistory = async (delta: -1 | 1): Promise<void> => {
 }
 
 const showHelp = (): void => {
-  const san = session.value?.state.value.expectedSan ?? null
-  const ok = showHintForExpected(formatBannerForSan('Hilfe – nächster Zug', san))
+  const ok = showHintForExpected()
   if (!ok) return
   const t = topic.value
   const line = currentLine.value
@@ -877,8 +744,6 @@ declare global {
       reset(): Promise<void>
       hint(): {
         active: boolean
-        banner: string | null
-        bannerKind: BannerKind | null
         demonstratedSteps: number[]
       }
       requestHelp(): boolean
@@ -893,12 +758,6 @@ const e2eEnabled = computed(() =>
 
 onMounted(() => {
   if (typeof window === 'undefined' || !e2eEnabled.value) return
-  const applyResetBannerForBridge = (reason: ResetReason): void => {
-    const after = markers()
-    if (!after) return
-    const next = bannerForResetReason(reason, after)
-    setBanner(next.kind, next.text)
-  }
 
   window.__chessTheory = {
     submit: async (san) => {
@@ -909,12 +768,10 @@ onMounted(() => {
       const wasNewStepMove = isNewStepMove(s.state.value)
       const r = await s.submit(san)
       if (r.result === 'wrong') {
-        showMistakeBanner()
         return { result: 'wrong', expected: r.expected }
       }
       board.value?.playOpponentSan(san)
       clearHintArrow()
-      clearEphemeralBanner()
       if (wasNewStepMove) demonstratedSteps.value.add(before.currentStep)
 
       const afterUser = markers()!
@@ -933,7 +790,6 @@ onMounted(() => {
         await nextTick()
         await replayPrefixOntoBoard(true)
         board.value?.setAnimationEnabled(true)
-        applyResetBannerForBridge(reasonAfterUser)
       } else if (
         currentLine.value
         && isOpponentTurn(currentLine.value, s.state.value.expectedMoveIndex)
@@ -956,7 +812,6 @@ onMounted(() => {
             await nextTick()
             await replayPrefixOntoBoard(true)
             board.value?.setAnimationEnabled(true)
-            applyResetBannerForBridge(reasonAfterOpponent)
           }
         }
       }
@@ -993,19 +848,13 @@ onMounted(() => {
     },
     hint: () => ({
       active: hintActive.value,
-      banner: banner.value?.text ?? null,
-      bannerKind: banner.value?.kind ?? null,
       demonstratedSteps: Array.from(demonstratedSteps.value),
     }),
-    requestHelp: () => {
-      const san = session.value?.state.value.expectedSan ?? null
-      return showHintForExpected(formatBannerForSan('Hilfe – nächster Zug', san))
-    },
+    requestHelp: () => showHintForExpected(),
   }
 })
 
 onBeforeUnmount(() => {
-  cancelMistakeTimer()
   if (typeof window !== 'undefined') delete window.__chessTheory
 })
 </script>
@@ -1099,41 +948,6 @@ onBeforeUnmount(() => {
               {{ phaseLabel }}
             </span>
           </div>
-          <!-- Banner: covers phase label when active, same fixed height -->
-          <Transition
-            enter-active-class="transition duration-100"
-            leave-active-class="transition duration-100"
-            enter-from-class="opacity-0"
-            leave-to-class="opacity-0"
-          >
-            <div
-              v-if="banner && bannerPreset"
-              class="absolute inset-0 flex items-center bg-(--ui-bg) px-3"
-              role="status"
-              aria-live="polite"
-              :data-banner-kind="banner.kind"
-            >
-              <div
-                :class="[
-                  'flex w-full items-center gap-2 rounded-lg border px-3 py-1.5 text-sm',
-                  bannerPreset.classes,
-                ]"
-              >
-                <UIcon :name="bannerPreset.icon" class="h-4 w-4 shrink-0" />
-                <span class="min-w-0 flex-1 truncate">{{ banner.text }}</span>
-                <UButton
-                  v-if="session.state.value.phase === 'intro' && parentLine"
-                  color="info"
-                  variant="link"
-                  size="xs"
-                  class="h-auto p-0 text-xs whitespace-nowrap"
-                  @click="goToForgottenParent"
-                >
-                  Hab ich vergessen
-                </UButton>
-              </div>
-            </div>
-          </Transition>
         </div>
 
         <!-- BOARD: plain, no overlay -->

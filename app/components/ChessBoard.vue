@@ -129,15 +129,13 @@ const resolveSanToSquares = (
 const refreshBounds = (): void => {
   // Chessground memoises the board's DOMRect and only invalidates that cache
   // on its own ResizeObserver (cg-wrap size), document `scroll` and window
-  // `resize`. When a sibling above the board (e.g. the hint banner) appears
-  // or disappears, the board's viewport POSITION shifts without its SIZE
-  // changing, so chessground keeps hit-testing clicks against the old rect
-  // and every click lands on a square offset by the banner's height. The
-  // only reliable user-visible fix was to resize the window. Synthesising a
-  // `scroll` event on `document` triggers chessground's own invalidation
-  // path (see chessground/dist/events.js) without reaching into library
-  // internals or side-effecting anything else in this app (we have no
-  // custom document-level scroll listeners).
+  // `resize`. When a sibling above the board appears or disappears, the
+  // board's viewport POSITION shifts without its SIZE changing, so chessground
+  // keeps hit-testing clicks against the old rect. Synthesising a `scroll`
+  // event on `document` triggers chessground's own invalidation path (see
+  // chessground/dist/events.js) without reaching into library internals or
+  // side-effecting anything else in this app (we have no custom
+  // document-level scroll listeners).
   if (typeof document === 'undefined') return
   document.dispatchEvent(new Event('scroll'))
 }
@@ -155,9 +153,7 @@ const drawHintForSan = (san: string): boolean => {
   api.setShapes([])
   const draw = () => {
     api.setShapes([{ orig: squares.from, dest: squares.to, brush: 'paleBlue' }])
-    // The hint arrow almost always appears together with the hint banner
-    // above the board, which may have just (re-)shifted the board's viewport
-    // position. Invalidate chessground's cached rect on the same frame so
+    // Invalidate chessground's cached rect after drawing the hint arrow so
     // subsequent clicks hit the correct square.
     refreshBounds()
   }

@@ -1,6 +1,5 @@
 import { ref, shallowRef, type Ref, type ShallowRef } from 'vue'
 import type { TrainingSession } from './training-session'
-import type { Banner } from '~/domain/learn-banner'
 import type { Line } from '~/domain/types'
 
 /**
@@ -13,10 +12,8 @@ import type { Line } from '~/domain/types'
  */
 export interface LearnState {
   currentLine: Ref<Line | null>
-  parentLine: ShallowRef<Line | null>
   session: ShallowRef<TrainingSession | null>
   demonstratedSteps: Ref<Set<number>>
-  banner: Ref<Banner | null>
   allMastered: Ref<boolean>
   /**
    * Set of line ids whose intro walkthrough has been completed in THIS app
@@ -32,10 +29,8 @@ export const useLearnState = (): LearnState => {
   if (cached) return cached
   cached = {
     currentLine: ref<Line | null>(null),
-    parentLine: shallowRef<Line | null>(null),
     session: shallowRef<TrainingSession | null>(null),
     demonstratedSteps: ref<Set<number>>(new Set()),
-    banner: ref<Banner | null>(null),
     allMastered: ref(false),
     introCompletedLineIds: ref<Set<string>>(new Set()),
   }
@@ -45,9 +40,7 @@ export const useLearnState = (): LearnState => {
 export const clearLearnState = (): void => {
   const state = useLearnState()
   state.currentLine.value = null
-  state.parentLine.value = null
   state.session.value = null
   state.demonstratedSteps.value = new Set()
-  state.banner.value = null
   state.allMastered.value = false
 }

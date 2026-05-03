@@ -253,3 +253,52 @@ export const isNewStepMove = (state: SessionState): boolean => {
     state.prefixPlies,
   )
 }
+
+export interface PhaseMarkers {
+  phase: 'intro' | 'building' | 'repeating' | 'done'
+  currentStep: number
+  repsDone: number
+}
+
+export type ResetReason =
+  | 'intro-complete'
+  | 'next-step'
+  | 'to-repeating'
+  | 'next-rep'
+
+export const getResetReason = (
+  before: PhaseMarkers,
+  after: PhaseMarkers,
+): ResetReason | null => {
+  if (after.phase === 'done') return null
+  if (before.phase === 'intro' && after.phase === 'building') return 'intro-complete'
+  if (before.phase === 'building' && after.phase === 'repeating') return 'to-repeating'
+  if (
+    before.phase === 'building'
+    && after.phase === 'building'
+    && after.currentStep > before.currentStep
+  ) return 'next-step'
+  if (
+    before.phase === 'repeating'
+    && after.phase === 'repeating'
+    && after.repsDone > before.repsDone
+  ) return 'next-rep'
+  return null
+}
+
+export const willMoveTriggerReset = (state: SessionState, san: string): boolean => {
+  const predicted = submitMove(state, san)
+  if (predicted.result === 'wrong') return false
+  if (predicted.state.phase === 'done') return true
+  const before: PhaseMarkers = {
+    phase: state.phase,
+    currentStep: state.currentStep,
+    repsDone: state.repsDone,
+  }
+  const after: PhaseMarkers = {
+    phase: predicted.state.phase,
+    currentStep: predicted.state.currentStep,
+    repsDone: predicted.state.repsDone,
+  }
+  return getResetReason(before, after) !== null
+}
