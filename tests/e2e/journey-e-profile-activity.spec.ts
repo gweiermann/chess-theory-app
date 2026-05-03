@@ -6,7 +6,7 @@ import { E2E_MAX_WAIT_MS, SPA_WAIT_UNTIL } from './helpers/prd-constants'
 import { seedActivityGhostLine, seedParentAutoplay } from './helpers/storage-seed'
 import { initItalianAutoplayGame, playSanFromUi } from './helpers/session-driver'
 
-/** Skipped: learn/play no longer has `[data-banner-kind]`; flows below use `playSanFromUi` / banner locators. Re-enable when e2e reads expected SAN via `?e2e=1` / `__chessTheory` or similar. */
+/** Skipped: learn/play no longer has `[data-banner-kind]`; these tests use `playSanFromUi` / banner locators. Re-enable when e2e can drive play without that strip. */
 
 test('E1 profile shows activity section', async ({ profile, page }) => {
   await profile.goto()

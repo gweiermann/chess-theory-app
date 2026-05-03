@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTopic } from '~/composables/useTopic'
 import { useTopicProgress } from '~/composables/useTopicProgress'
@@ -152,12 +152,6 @@ const displayLineName = computed(() => {
   const idx = name.indexOf(':')
   return idx === -1 ? name : name.slice(idx + 1).trim()
 })
-
-const isOpponentTurn = (line: Line, expectedIndex: number): boolean => {
-  if (expectedIndex >= line.sanMoves.length) return false
-  const moveSide = expectedIndex % 2 === 0 ? 'white' : 'black'
-  return moveSide !== line.userSide
-}
 
 const setBoardLocked = (locked: boolean): void => {
   flowLocked.value = locked
@@ -739,130 +733,6 @@ const showHelp = (): void => {
 const goToOpenings = (): void => {
   void router.push('/openings')
 }
-
-declare global {
-  interface Window {
-    __chessTheory?: {
-      submit(san: string): Promise<{ result: string; expected?: string }>
-      state(): unknown
-      currentLine(): { id: string; fullName: string } | null
-      mastered(): string[]
-      reset(): Promise<void>
-      hint(): {
-        active: boolean
-        demonstratedSteps: number[]
-      }
-      requestHelp(): boolean
-    }
-  }
-}
-
-const e2eEnabled = computed(() =>
-  typeof window !== 'undefined'
-  && new URL(window.location.href).searchParams.get('e2e') === '1',
-)
-
-onMounted(() => {
-  if (typeof window === 'undefined' || !e2eEnabled.value) return
-
-  window.__chessTheory = {
-    submit: async (san) => {
-      const s = session.value
-      if (!s) return { result: 'no-session' }
-      const before = markers()
-      if (!before) return { result: 'no-session' }
-      const wasNewStepMove = isNewStepMove(s.state.value)
-      const r = await s.submit(san)
-      if (r.result === 'wrong') {
-        return { result: 'wrong', expected: r.expected }
-      }
-      board.value?.playOpponentSan(san)
-      clearHintArrow()
-      if (wasNewStepMove) demonstratedSteps.value.add(before.currentStep)
-
-      const afterUser = markers()!
-
-      if (afterUser.phase === 'done') {
-        finalizeMastery()
-        broadenSelectionAfterCompletion()
-        return { result: 'correct' }
-      }
-
-      const reasonAfterUser = getResetReason(before, afterUser)
-      if (reasonAfterUser !== null) {
-        clearHintArrow()
-        board.value?.setAnimationEnabled(false)
-        board.value?.reset()
-        await nextTick()
-        await replayPrefixOntoBoard(true)
-        board.value?.setAnimationEnabled(true)
-      } else if (
-        currentLine.value
-        && isOpponentTurn(currentLine.value, s.state.value.expectedMoveIndex)
-      ) {
-        const opponentSan = currentLine.value.sanMoves[s.state.value.expectedMoveIndex]
-        if (opponentSan) {
-          board.value?.playOpponentSan(opponentSan)
-          await s.submit(opponentSan)
-          const afterOpponent = markers()!
-          if (afterOpponent.phase === 'done') {
-            finalizeMastery()
-            broadenSelectionAfterCompletion()
-            return { result: 'correct' }
-          }
-          const reasonAfterOpponent = getResetReason(before, afterOpponent)
-          if (reasonAfterOpponent !== null) {
-            clearHintArrow()
-            board.value?.setAnimationEnabled(false)
-            board.value?.reset()
-            await nextTick()
-            await replayPrefixOntoBoard(true)
-            board.value?.setAnimationEnabled(true)
-          }
-        }
-      }
-
-      showHintIfNewStep()
-      return { result: 'correct' }
-    },
-    state: () => session.value?.state.value ?? null,
-    currentLine: () =>
-      currentLine.value
-        ? { id: currentLine.value.id, fullName: currentLine.value.fullName }
-        : null,
-    mastered: () => {
-      try {
-        const raw = window.localStorage.getItem('chess-theory:v1:progress')
-        if (!raw) return []
-        const shape = JSON.parse(raw) as {
-          byTopic?: Record<string, Record<string, { status?: string }>>
-        }
-        const out: string[] = []
-        for (const topicEntries of Object.values(shape.byTopic ?? {})) {
-          for (const [lineId, entry] of Object.entries(topicEntries)) {
-            if (entry?.status === 'mastered') out.push(lineId)
-          }
-        }
-        return out
-      } catch {
-        return []
-      }
-    },
-    reset: async () => {
-      window.localStorage.removeItem('chess-theory:v1:progress')
-      if (topic.value) startNextLine(topic.value)
-    },
-    hint: () => ({
-      active: hintActive.value,
-      demonstratedSteps: Array.from(demonstratedSteps.value),
-    }),
-    requestHelp: () => showHintForExpected(),
-  }
-})
-
-onBeforeUnmount(() => {
-  if (typeof window !== 'undefined') delete window.__chessTheory
-})
 </script>
 
 <template>

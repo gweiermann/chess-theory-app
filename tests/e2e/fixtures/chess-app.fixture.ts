@@ -24,7 +24,7 @@ export const test = base.extend<ChessAppFixtures>({
   freshStorage: [async ({ context }, use) => {
     await context.addInitScript(() => {
       try {
-        const marker = '__chessTheoryE2eStoragePrimed'
+        const marker = 'e2eFreshStoragePrimed'
         if (window.sessionStorage.getItem(marker) === '1') {
           return
         }

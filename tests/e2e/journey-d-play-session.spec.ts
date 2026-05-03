@@ -95,7 +95,7 @@ test('D4–D5 play header shows topic and line title', async ({ familyTree, lear
 
 // Banner strip (`[data-banner-kind]`) removed from learn/play; the following tests
 // asserted on it or parsed expected SAN via `readNextSanFromUi`. Re-enable when e2e
-// reads expected moves via `?e2e=1` / `__chessTheory` or another stable hook.
+// Banner strip (`[data-banner-kind]`) removed from learn/play; skipped tests asserted on it or parsed SAN via `readNextSanFromUi`. Re-enable when e2e can observe expected moves without that UI.
 test.skip('D14 hint banner shows expected SAN after hint control', async ({ familyTree, learnPlay, page }) => {
   await seedParentAutoplay(page, true)
   await familyTree.goto('e4', 'italian-game')
