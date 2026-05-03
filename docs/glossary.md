@@ -9,17 +9,15 @@ Project vocabulary for openings data and the learn flow.
 A **line**’s full sequence of moves is stored as **`sanMoves`**: an ordered list of plies, same order as the line’s PGN, alternating White and Black from the start position.
 
 ## Parent and child (lines)
-Lines are grouped by openings first move > family > line.
-But lines then have a separate tree representation where a line can inherit a parent line, based on its `sanMoves` and `userSide`
 
-Here's how to determine who's parent and who's child in the tree:
-- The **child** is the line with the **longer** user move list; both lines use the same **user side** for a valid parent/child pair.
-- The **parent** is a **strict prefix** of the child **in user moves**: the parent’s list is **exactly the first *N* user moves** of the child’s list, the child has **at least one more** user move than that, and the lists are not the same length (strict prefix, not a sibling match).
+Lines are grouped by topic → family → line. **Parent** and **child** refer to a **strict prefix** on the **full** move list **`sanMoves`** (every ply from the start), not a filtered subset of “only the user’s” plies.
 
-So “deeper” variation = **more user moves**; **shared lead-in** = **prefix of user moves** after stripping.
+- The **child** has the **longer** `sanMoves`.
+- The **parent**’s `sanMoves` is **exactly the first *N* plies** of the child’s list; the child has **at least one more** ply. Same length ⇒ siblings, not parent/child.
 
-Attention:
-Any former notion of a separate **name tree** of parents (labels parsed from `fullName`) is **not** a second definition of parent/child; that implementation is being removed. Progress (e.g. which parent counts as *mastered* when skipping intro) is expressed on top of the same user-move prefix relationship plus stored progress state.
+When the app resolves a **mastered parent** (e.g. intro skip / parent-prefix autoplay), the candidate must **match the line’s `userSide`** as well as that prefix, so training stays on the correct color.
+
+A legacy **name tree** built from parsed `fullName` was a separate idea and is **not** this parent/child relation; that navigation is being removed.
 
 ## Other terms
 
@@ -30,7 +28,6 @@ Any former notion of a separate **name tree** of parents (labels parsed from `fu
 | **Line** | One concrete variation: ECO, display name, PGN, **`sanMoves`**, **`userSide`**, and progress. |
 | **ECO** | Encyclopedic opening code (e.g. B02) on a line, used for identity and ordering. |
 | **userSide** | Whether the user trains that line as **White** or **Black**. |
-| **User Moves** | `sanMoves` but only the moves of the `userSide` and none of the opponents |
 | **FEN** | Forsyth–Edwards notation for board state (position, side to move, castling, etc.). |
 | **PGN** | Portable Game Notation string for a line; parsed to **`sanMoves`**. |
 | **expectedSan** | The next move the training session expects in the current step. |
@@ -44,4 +41,4 @@ Any former notion of a separate **name tree** of parents (labels parsed from `fu
 
 ---
 
-*Last updated to align on a user-move prefix model for parent/child; legacy name-tree navigation is being removed from the product.*
+*Last updated: parent/child defined by strict `sanMoves` prefix; legacy name-tree navigation is being removed.*
