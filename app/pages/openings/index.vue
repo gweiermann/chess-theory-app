@@ -37,7 +37,7 @@ const refreshMastery = async (): Promise<void> => {
   for (const summary of index.value.topics) {
     const masteredLineIds = readMasteredLineIds(summary.id)
     if (masteredLineIds.size === 0) {
-      next.set(summary.id, { total: summary.totalFamilies, mastered: 0 })
+      next.set(summary.id, { total: summary.familyCount, mastered: 0 })
       continue
     }
     try {
@@ -47,7 +47,7 @@ const refreshMastery = async (): Promise<void> => {
       ).length
       next.set(summary.id, { total: topicData.families.length, mastered })
     } catch {
-      next.set(summary.id, { total: summary.totalFamilies, mastered: 0 })
+      next.set(summary.id, { total: summary.familyCount, mastered: 0 })
     }
   }
   masteryByTopic.value = next
@@ -62,7 +62,7 @@ const topics = computed<TopicSummary[]>(() => index.value?.topics ?? [])
 
 const masteryFor = (summary: TopicSummary): FamilyMastery =>
   masteryByTopic.value.get(summary.id) ?? {
-    total: summary.totalFamilies,
+    total: summary.familyCount,
     mastered: 0,
   }
 </script>
@@ -110,14 +110,14 @@ const masteryFor = (summary: TopicSummary): FamilyMastery =>
             <div class="flex items-center justify-between gap-2">
               <h2 class="text-xl font-bold sm:text-2xl">{{ topic.label }}</h2>
               <UBadge variant="soft" color="neutral">
-                {{ topic.totalFamilies }} Eröffnungen
+                {{ topic.familyCount }} Eröffnungen
               </UBadge>
             </div>
           </template>
 
           <div class="space-y-3">
             <p class="text-sm text-(--ui-text-muted)">
-              {{ topic.totalLines }} Zugfolgen
+              {{ topic.lineCount }} Zugfolgen
             </p>
             <TopicProgress
               :mastered="masteryFor(topic).mastered"

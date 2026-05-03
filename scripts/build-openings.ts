@@ -1,16 +1,17 @@
 #!/usr/bin/env tsx
-import { mkdir, readFile, writeFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile, stat } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildDatasetFromTsv } from '../app/domain/data/build-openings'
-import { splitDataset } from '../app/domain/data/split-dataset'
+import { familyToTreeFile } from '../app/domain/data/family-tree-file'
+import { buildTopicIndexFile, splitDataset } from '../app/domain/data/split-dataset'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
 const CACHE_DIR = resolve(ROOT, 'scripts/.cache')
 const OUT_DIR = resolve(ROOT, 'public/data/openings')
 const INDEX_FILE = resolve(OUT_DIR, 'index.json')
-const TOPICS_DIR = resolve(OUT_DIR, 'topics')
+const LEGACY_TOPICS_DIR = resolve(OUT_DIR, 'topics')
 const VOLUMES = ['a', 'b', 'c', 'd', 'e'] as const
 const BASE_URL = 'https://raw.githubusercontent.com/lichess-org/chess-openings/master'
 
@@ -53,18 +54,31 @@ const main = async (): Promise<void> => {
   const dataset = buildDatasetFromTsv(merged)
   const split = splitDataset(dataset)
 
-  await mkdir(TOPICS_DIR, { recursive: true })
+  await mkdir(OUT_DIR, { recursive: true })
+  await rm(LEGACY_TOPICS_DIR, { recursive: true, force: true })
   await writeFile(INDEX_FILE, JSON.stringify(split.index), 'utf8')
 
-  for (const [topicId, topic] of split.topics) {
-    const path = resolve(TOPICS_DIR, `${topicId}.json`)
-    await writeFile(path, JSON.stringify(topic), 'utf8')
+  for (const topic of dataset.topics) {
+    const topicDir = resolve(OUT_DIR, topic.id)
+    const familiesDir = resolve(topicDir, 'families')
+    await mkdir(familiesDir, { recursive: true })
+    await writeFile(
+      resolve(topicDir, 'index.json'),
+      JSON.stringify(buildTopicIndexFile(topic)),
+      'utf8',
+    )
+    for (const family of topic.families) {
+      await writeFile(
+        resolve(familiesDir, `${family.id}.json`),
+        JSON.stringify(familyToTreeFile(family)),
+        'utf8',
+      )
+    }
   }
 
-  const totalLines = split.index.topics.reduce((s, t) => s + t.totalLines, 0)
+  const totalLines = split.index.topics.reduce((s, t) => s + t.lineCount, 0)
   console.log(
-    `[openings] wrote index + ${split.index.topics.length} topic files, `
-    + `${totalLines} lines total → ${OUT_DIR}`,
+    `[openings] wrote index + ${split.index.topics.length} topic folders (${totalLines} lines) → ${OUT_DIR}`,
   )
 }
 

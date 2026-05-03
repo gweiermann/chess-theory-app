@@ -213,11 +213,27 @@ test('drilling a full line via the e2e bridge marks it as mastered', async ({ pa
   expect(line).not.toBeNull()
 
   const sanMoves = await page.evaluate(async () => {
-    const res = await fetch('/data/openings/topics/e4.json')
-    const e4Topic = (await res.json()) as {
-      families: Array<{ lines: Array<{ id: string; sanMoves: string[] }> }>
+    const idxRes = await fetch('/data/openings/e4/index.json')
+    const idx = (await idxRes.json()) as {
+      families: Array<{ id: string }>
     }
-    const allLines = e4Topic.families.flatMap((f) => f.lines)
+    type WireNode = {
+      line?: { id: string; sanMoves: string[] }
+      children?: WireNode[]
+    }
+    const collectLines = (node: WireNode): Array<{ id: string; sanMoves: string[] }> => {
+      const out: Array<{ id: string; sanMoves: string[] }> = []
+      if (node.line) out.push(node.line)
+      for (const c of node.children ?? []) out.push(...collectLines(c))
+      return out
+    }
+    const familyPayloads = await Promise.all(
+      idx.families.map(async (row) => {
+        const r = await fetch(`/data/openings/e4/families/${row.id}.json`)
+        return r.json() as Promise<WireNode & { id?: string }>
+      }),
+    )
+    const allLines = familyPayloads.flatMap((f) => collectLines(f))
     const current = window.__chessTheory!.currentLine() as { id: string }
     return allLines.find((l) => l.id === current.id)!.sanMoves
   })

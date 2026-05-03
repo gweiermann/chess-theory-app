@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createHttpOpeningsLoader } from '~/infra/openings-loader'
+import { treeFileToFamily } from '~/domain/data/family-tree-file'
 import type { Topic } from '~/domain/types'
-import type { OpeningsIndex } from '~/domain/data/split-dataset'
+import type { OpeningsIndex, TopicIndexFile } from '~/domain/data/split-dataset'
 
 const sampleIndex: OpeningsIndex = {
   generatedAt: '2026-01-01T00:00:00.000Z',
@@ -10,14 +11,13 @@ const sampleIndex: OpeningsIndex = {
       id: 'e4',
       label: '1.e4',
       firstMove: 'e4',
-      totalFamilies: 1,
-      totalLines: 1,
-      familyIds: ['italian-game'],
+      familyCount: 1,
+      lineCount: 1,
     },
   ],
 }
 
-const sampleTopic: Topic = {
+const sampleTopicIndex: TopicIndexFile = {
   id: 'e4',
   label: '1.e4',
   firstMove: 'e4',
@@ -25,11 +25,33 @@ const sampleTopic: Topic = {
     {
       id: 'italian-game',
       name: 'Italian Game',
-      topicId: 'e4',
-      tree: { name: 'Italian Game', lineId: null, children: {} },
-      lines: [],
+      category: 'opening',
+      lineCount: 1,
     },
   ],
+}
+
+const sampleItalianWire = {
+  id: 'italian-game',
+  name: 'Italian Game',
+  category: 'opening' as const,
+  label: 'Italian Game',
+  line: {
+    id: 'C50-italian-game',
+    eco: 'C50',
+    fullName: 'Italian Game',
+    pgn: '1. e4 e5 2. Nf3 Nc6 3. Bc4',
+    sanMoves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'],
+    userSide: 'white' as const,
+  },
+  children: [],
+}
+
+const sampleTopic: Topic = {
+  id: 'e4',
+  label: '1.e4',
+  firstMove: 'e4',
+  families: [treeFileToFamily(sampleItalianWire)],
 }
 
 const makeFetch = (responses: Record<string, unknown>) =>
@@ -76,9 +98,11 @@ describe('createHttpOpeningsLoader', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
-  it('loads a single topic on demand', async () => {
+  it('loads a topic shell plus each family file', async () => {
     const fetchImpl = makeFetch({
-      'https://example.test/data/openings/topics/e4.json': sampleTopic,
+      'https://example.test/data/openings/e4/index.json': sampleTopicIndex,
+      'https://example.test/data/openings/e4/families/italian-game.json':
+        sampleItalianWire,
     })
     const loader = createHttpOpeningsLoader(
       'https://example.test/data/openings',
@@ -86,15 +110,20 @@ describe('createHttpOpeningsLoader', () => {
     )
 
     const topic = await loader.loadTopic('e4')
-    expect(topic.id).toBe('e4')
+    expect(topic).toEqual(sampleTopic)
     expect(fetchImpl).toHaveBeenCalledWith(
-      'https://example.test/data/openings/topics/e4.json',
+      'https://example.test/data/openings/e4/index.json',
+    )
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://example.test/data/openings/e4/families/italian-game.json',
     )
   })
 
   it('caches each topic separately', async () => {
     const fetchImpl = makeFetch({
-      'https://example.test/data/openings/topics/e4.json': sampleTopic,
+      'https://example.test/data/openings/e4/index.json': sampleTopicIndex,
+      'https://example.test/data/openings/e4/families/italian-game.json':
+        sampleItalianWire,
     })
     const loader = createHttpOpeningsLoader(
       'https://example.test/data/openings',
@@ -103,7 +132,7 @@ describe('createHttpOpeningsLoader', () => {
 
     await loader.loadTopic('e4')
     await loader.loadTopic('e4')
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
   it('throws a useful error when the topic is missing', async () => {
@@ -116,23 +145,40 @@ describe('createHttpOpeningsLoader', () => {
   })
 
   it('deduplicates inflight requests for the same topic', async () => {
-    let resolveJson!: (value: Topic) => void
-    const jsonReady = new Promise<Topic>((r) => {
-      resolveJson = r
+    let resolveShell!: (value: TopicIndexFile) => void
+    const shellReady = new Promise<TopicIndexFile>((r) => {
+      resolveShell = r
     })
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: () => jsonReady,
-    })) as unknown as typeof fetch
+    let resolveFamily!: (value: typeof sampleItalianWire) => void
+    const familyReady = new Promise<typeof sampleItalianWire>((r) => {
+      resolveFamily = r
+    })
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith('/e4/index.json')) {
+        return {
+          ok: true,
+          status: 200,
+          json: () => shellReady,
+        } as unknown as Response
+      }
+      if (url.includes('/e4/families/italian-game.json')) {
+        return {
+          ok: true,
+          status: 200,
+          json: () => familyReady,
+        } as unknown as Response
+      }
+      return { ok: false, status: 404, statusText: 'Not Found' } as Response
+    }) as unknown as typeof fetch
     const loader = createHttpOpeningsLoader(
       'https://example.test/data/openings',
       fetchImpl,
     )
     const a = loader.loadTopic('e4')
     const b = loader.loadTopic('e4')
-    resolveJson(sampleTopic)
+    resolveShell(sampleTopicIndex)
+    resolveFamily(sampleItalianWire)
     await Promise.all([a, b])
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 })

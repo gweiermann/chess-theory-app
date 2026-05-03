@@ -1,5 +1,6 @@
+import { treeFileToFamily } from '~/domain/data/family-tree-file'
 import type { Topic } from '~/domain/types'
-import type { OpeningsIndex } from '~/domain/data/split-dataset'
+import type { OpeningsIndex, TopicIndexFile } from '~/domain/data/split-dataset'
 
 export interface OpeningsLoader {
   loadIndex(): Promise<OpeningsIndex>
@@ -14,7 +15,9 @@ export const createHttpOpeningsLoader = (
 ): OpeningsLoader => {
   const base = stripTrailingSlash(baseUrl)
   const indexUrl = `${base}/index.json`
-  const topicUrl = (id: string) => `${base}/topics/${id}.json`
+  const topicIndexUrl = (topicId: string) => `${base}/${topicId}/index.json`
+  const familyUrl = (topicId: string, familyId: string) =>
+    `${base}/${topicId}/families/${familyId}.json`
 
   let indexCache: OpeningsIndex | null = null
   let indexInflight: Promise<OpeningsIndex> | null = null
@@ -49,15 +52,32 @@ export const createHttpOpeningsLoader = (
     if (inflight) return inflight
 
     const promise = (async () => {
-      const res = await fetchImpl(topicUrl(id))
-      if (!res.ok) {
+      const shellRes = await fetchImpl(topicIndexUrl(id))
+      if (!shellRes.ok) {
         throw new Error(
-          `Failed to load topic '${id}': ${res.status} ${res.statusText}`,
+          `Failed to load topic '${id}': ${shellRes.status} ${shellRes.statusText}`,
         )
       }
-      const json = (await res.json()) as Topic
-      topicCache.set(id, json)
-      return json
+      const shell = (await shellRes.json()) as TopicIndexFile
+      const families = await Promise.all(
+        shell.families.map(async (row) => {
+          const res = await fetchImpl(familyUrl(id, row.id))
+          if (!res.ok) {
+            throw new Error(
+              `Failed to load family '${row.id}' for topic '${id}': ${res.status} ${res.statusText}`,
+            )
+          }
+          return treeFileToFamily(await res.json())
+        }),
+      )
+      const topic: Topic = {
+        id: shell.id,
+        label: shell.label,
+        firstMove: shell.firstMove,
+        families,
+      }
+      topicCache.set(id, topic)
+      return topic
     })()
     topicInflight.set(id, promise)
     try {

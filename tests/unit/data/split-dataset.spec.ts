@@ -23,9 +23,8 @@ describe('splitDataset', () => {
     const e4Summary = split.index.topics.find((t) => t.id === 'e4')!
     expect(e4Summary.label).toBe('e4')
     expect(e4Summary.firstMove).toBe('e4')
-    expect(e4Summary.totalFamilies).toBe(2)
-    expect(e4Summary.totalLines).toBe(3)
-    expect(e4Summary.familyIds).toEqual(['italian-game', 'nimzowitsch-defense'])
+    expect(e4Summary.familyCount).toBe(2)
+    expect(e4Summary.lineCount).toBe(3)
   })
 
   it('keeps the full topic payload addressable by topic id', () => {
