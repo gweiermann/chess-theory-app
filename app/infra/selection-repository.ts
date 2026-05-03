@@ -29,6 +29,15 @@ const isValidFocus = (focus: unknown): focus is SelectionFocus => {
     ) return false
     return true
   }
+  if (f.kind === 'node') {
+    const nodeFocus = f as { lineIds?: unknown; prefixLineId?: unknown }
+    if (!Array.isArray(nodeFocus.lineIds)) return false
+    if (
+      typeof nodeFocus.prefixLineId !== 'undefined'
+      && typeof nodeFocus.prefixLineId !== 'string'
+    ) return false
+    return true
+  }
   return false
 }
 

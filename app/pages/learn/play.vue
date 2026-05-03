@@ -393,20 +393,8 @@ const resetBoardForNextAttempt = async (
  * prefix is the topic's own first move (e.g. e4) we surface a terser
  * prompt asking the user to play that one move.
  */
-const introBannerText = (
-  t: Topic,
-  parent: Line | null,
-  prefixPlies: number,
-  firstSan: string | null,
-): string => {
-  if (parent) {
-    return `Spiele die Eröffnung "${parent.fullName}" bis zur Grundposition`
-  }
-  if (prefixPlies === 1 && firstSan) {
-    return `Spiele den Eröffnungszug ${firstSan}`
-  }
-  return `Spiele die ersten ${prefixPlies} Züge von ${t.label}`
-}
+const introBannerText = (parent: Line): string =>
+  `Spiele die Eröffnung "${parent.fullName}" bis zur Grundposition`
 
 const startLine = (
   t: Topic,
@@ -421,12 +409,28 @@ const startLine = (
   const progress = progressApi.value?.progress.value ?? []
 
   // When training from a tree node, use that node's own line as a forced
-  // prefix for all child lines — no mastery required, unlike findParentLine.
+  // prefix — only if the base line is already mastered (same requirement as
+  // findParentLine). This enforces the learn-the-base-first rule.
   const focus = selection.value?.focus
+  const masteredSet = new Set(progress.filter((p) => p.status === 'mastered').map((p) => p.lineId))
   let forcedParent: Line | null = null
   if (focus?.kind === 'node' && focus.prefixLineId && focus.prefixLineId !== line.id) {
     const candidate = t.families.flatMap((f) => f.lines).find((l) => l.id === focus.prefixLineId) ?? null
-    if (candidate && candidate.sanMoves.length > 0 && candidate.sanMoves.length < line.sanMoves.length) {
+    if (
+      candidate
+      && masteredSet.has(candidate.id)
+      && candidate.sanMoves.length > 0
+      && candidate.sanMoves.length < line.sanMoves.length
+      // Prefix moves must actually match the line's opening moves
+      && candidate.sanMoves.every((san, i) => san === line.sanMoves[i])
+      // At least one user move must remain after the prefix (otherwise the
+      // session would start in 'done' state — e.g. a 6-move line whose only
+      // extra move beyond the 5-move base is the opponent's response)
+      && line.sanMoves.slice(candidate.sanMoves.length).some((_, i) => {
+        const idx = candidate.sanMoves.length + i
+        return (idx % 2 === 0) === (line.userSide === 'white')
+      })
+    ) {
       forcedParent = candidate
     }
   }
@@ -438,39 +442,26 @@ const startLine = (
     && parent.sanMoves.length > 0
     && parent.sanMoves.length < line.sanMoves.length
 
-  // Treat the topic's own first move (e.g. "1.e4") as an implicit parent
-  // when no real parent has been mastered: every e4 line shares that
-  // opening move, so it acts as a minimal "play to setup" step.
-  const hasVirtualFirstMoveParent =
-    !hasRealParent
-    && line.sanMoves.length > 1
-    && !!t.firstMove
-    && line.sanMoves[0] === t.firstMove
+  const userExplicitSelection =
+    !!forcedParent
+    || (focus?.kind === 'node' && !!focus.prefixLineId)
+    || (focus?.kind === 'line' && focus.exclusive)
 
-  const prefixPlies = hasRealParent
-    ? parent!.sanMoves.length
-    : hasVirtualFirstMoveParent
-      ? 1
-      : 0
+  const prefixPlies = hasRealParent ? parent!.sanMoves.length : 0
 
   // A parent is defined by its USER moves being a prefix of the child's
   // user moves. For defenses (userSide=black) the first ply belongs to
   // the opponent, so the "virtual" single-ply prefix is not something
   // the user can play by hand – skip the intro in that case. Real
   // parents always share userSide and are valid intro candidates.
-  const introIsPlayable =
-    hasRealParent
-    || (hasVirtualFirstMoveParent && line.userSide === 'white')
+  const introIsPlayable = hasRealParent
 
   // The intro phase prompts the user to play the prefix moves by hand so
   // they reach the parent's base position from memory. The /profile toggle
   // `autoPlayParentPrefix` skips this manual walkthrough and auto-plays
   // the prefix instead – intended for experienced users who already know
   // the parent inside out.
-  // For forced node prefixes the user explicitly navigated to that position
-  // in the tree, so there is no value in quizzing them on how to reach it —
-  // always auto-replay the prefix instead of running the intro.
-  const runsIntro = introIsPlayable && prefixPlies > 0 && !autoPlayParentPrefix.value && !forcedParent
+  const runsIntro = introIsPlayable && prefixPlies > 0 && !autoPlayParentPrefix.value && !userExplicitSelection
   const skipIntro = !runsIntro
 
   const repo = $repositories.createProgressRepository(t)
@@ -493,7 +484,7 @@ const startLine = (
   if (runsIntro) {
     setBanner(
       'memory',
-      introBannerText(t, hasRealParent ? parent : null, prefixPlies, line.sanMoves[0] ?? null),
+      introBannerText(parent!),
     )
   }
 

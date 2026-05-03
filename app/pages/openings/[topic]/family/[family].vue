@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTopic } from '~/composables/useTopic'
 import { useTopicProgress } from '~/composables/useTopicProgress'
@@ -148,6 +148,61 @@ const findLine = (lineId: string) => {
   }
   return null
 }
+
+// Whether the current node's own line (= the base/prefix for all children) is mastered
+const isBaseMastered = computed<boolean>(() => {
+  const lineId = currentNode.value?.lineId
+  if (!lineId) return true
+  return progressApi.value?.isMastered(lineId) ?? false
+})
+
+const baseLine = computed(() => {
+  const lineId = currentNode.value?.lineId
+  if (!lineId) return null
+  return findLine(lineId)
+})
+
+const baseLineName = computed<string>(() =>
+  baseLine.value?.fullName ?? currentNode.value?.label ?? '',
+)
+
+// Action sheet for locked sub-variants (base not mastered)
+interface LockedAction {
+  label: string
+  onProceed: () => void
+}
+const showLockedSheet = ref(false)
+const lockedAction = ref<LockedAction | null>(null)
+
+const tryLearnLine = (lineId: string, label: string) => {
+  if (isBaseMastered.value) {
+    learnLine(lineId)
+    return
+  }
+  lockedAction.value = { label, onProceed: () => learnLine(lineId) }
+  showLockedSheet.value = true
+}
+
+const tryLearnChildNode = (child: TreeNode) => {
+  if (isBaseMastered.value) {
+    learnChildNode(child)
+    return
+  }
+  lockedAction.value = { label: child.label, onProceed: () => learnChildNode(child) }
+  showLockedSheet.value = true
+}
+
+const confirmLearnBase = () => {
+  showLockedSheet.value = false
+  const lineId = currentNode.value?.lineId
+  if (!lineId) return
+  learnLine(lineId)
+}
+
+const confirmLearnAnyway = () => {
+  showLockedSheet.value = false
+  lockedAction.value?.onProceed()
+}
 </script>
 
 <template>
@@ -196,37 +251,55 @@ const findLine = (lineId: string) => {
         <p class="text-sm text-(--ui-text-muted) sm:text-base">
           {{ nodeMasteredCount }} / {{ nodeLineIds.length }} Zugfolgen gemeistert
         </p>
-        <UButton
-          color="primary"
-          size="lg"
-          icon="i-lucide-play"
-          block
-          class="sm:w-auto"
-          :disabled="isNodeMastered"
-          @click="learnNode"
-        >
-          {{ pathSegments.length === 0 ? 'Eröffnung üben' : 'Alle üben' }}
-        </UButton>
+        <div class="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center">
+          <UButton
+            color="primary"
+            size="lg"
+            icon="i-lucide-play"
+            block
+            class="sm:w-auto"
+            :disabled="isNodeMastered"
+            @click="learnNode"
+          >
+            {{ pathSegments.length === 0 ? 'Eröffnung üben' : 'Alle üben' }}
+          </UButton>
+          <p v-if="currentNode.lineId && !isBaseMastered" class="text-xs text-(--ui-text-muted) sm:ml-1">
+            Startet mit der Grundvariante „{{ currentNode.label }}"
+          </p>
+        </div>
       </header>
 
-      <!-- Current node has its own line (intermediate node with a lineId) -->
+      <!-- Current node has its own line — Grundposition card -->
       <div
         v-if="currentNode.lineId"
-        class="mb-4 overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg)"
+        class="relative mb-4 overflow-hidden rounded-xl border"
+        :class="isBaseMastered
+          ? 'border-(--ui-success)/40 bg-(--ui-success)/5'
+          : 'border-(--ui-primary)/40 bg-(--ui-primary)/8'"
       >
-        <div class="flex items-center justify-between gap-4 p-3 sm:p-4">
+        <!-- Left accent strip -->
+        <div
+          class="absolute inset-y-0 left-0 w-1"
+          :class="isBaseMastered ? 'bg-(--ui-success)' : 'bg-(--ui-primary)'"
+        />
+        <div class="flex items-center justify-between gap-4 p-3 pl-5 sm:p-4 sm:pl-6">
           <div class="min-w-0">
-            <p class="text-xs uppercase tracking-widest text-(--ui-text-muted)">Diese Zugfolge</p>
-            <p class="mt-0.5 truncate text-sm font-medium sm:text-base">
-              {{ findLine(currentNode.lineId)?.fullName ?? currentNode.label }}
+            <p
+              class="text-xs font-semibold uppercase tracking-widest"
+              :class="isBaseMastered ? 'text-(--ui-success)' : 'text-(--ui-primary)'"
+            >
+              Grundposition
             </p>
-            <p v-if="findLine(currentNode.lineId)" class="mt-0.5 text-xs text-(--ui-text-muted)">
-              {{ findLine(currentNode.lineId)!.sanMoves.length }} Züge
+            <p class="mt-0.5 truncate text-sm font-medium sm:text-base">
+              {{ baseLine?.fullName ?? currentNode.label }}
+            </p>
+            <p v-if="baseLine" class="mt-0.5 text-xs text-(--ui-text-muted)">
+              {{ baseLine.sanMoves.length }} Züge
             </p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <UBadge
-              v-if="progressApi?.isMastered(currentNode.lineId)"
+              v-if="isBaseMastered"
               color="success"
               variant="soft"
               icon="i-lucide-check"
@@ -234,16 +307,38 @@ const findLine = (lineId: string) => {
               Gemeistert
             </UBadge>
             <UButton
-              size="xs"
+              v-if="!isBaseMastered"
+              size="sm"
               color="primary"
-              variant="soft"
               icon="i-lucide-play"
               @click="learnLine(currentNode.lineId)"
             >
-              Üben
+              Jetzt üben
+            </UButton>
+            <UButton
+              v-else
+              size="xs"
+              color="primary"
+              variant="soft"
+              icon="i-lucide-rotate-ccw"
+              @click="learnLine(currentNode.lineId)"
+            >
+              Wiederholen
             </UButton>
           </div>
         </div>
+      </div>
+
+      <!-- Info banner: base not yet mastered, sub-variants present -->
+      <div
+        v-if="currentNode.lineId && !isBaseMastered && currentNode.children.length > 0"
+        class="mb-4 flex items-start gap-3 rounded-xl border border-(--ui-info)/30 bg-(--ui-info)/8 p-3 sm:p-4"
+      >
+        <UIcon name="i-lucide-info" class="mt-0.5 shrink-0 text-(--ui-info)" />
+        <p class="text-sm text-(--ui-info)">
+          Meistere erst die Grundposition <strong class="font-semibold">„{{ currentNode.label }}"</strong>,
+          um Untervarianten von dieser Stellung zu starten.
+        </p>
       </div>
 
       <!-- Children list (sub-nodes to navigate into) -->
@@ -287,10 +382,10 @@ const findLine = (lineId: string) => {
                 </UBadge>
                 <UButton
                   size="xs"
-                  color="primary"
+                  :color="isBaseMastered ? 'primary' : 'neutral'"
                   variant="soft"
-                  icon="i-lucide-play"
-                  @click="learnLine(child.lineId)"
+                  :icon="isBaseMastered ? 'i-lucide-play' : 'i-lucide-lock'"
+                  @click="tryLearnLine(child.lineId, child.label)"
                 >
                   Üben
                 </UButton>
@@ -325,10 +420,10 @@ const findLine = (lineId: string) => {
                 <UButton
                   v-else
                   size="xs"
-                  color="primary"
+                  :color="isBaseMastered ? 'primary' : 'neutral'"
                   variant="soft"
-                  icon="i-lucide-play"
-                  @click="learnChildNode(child)"
+                  :icon="isBaseMastered ? 'i-lucide-play' : 'i-lucide-lock'"
+                  @click="tryLearnChildNode(child)"
                 >
                   Üben
                 </UButton>
@@ -354,4 +449,43 @@ const findLine = (lineId: string) => {
       </p>
     </template>
   </div>
+
+  <!-- Action sheet: base not mastered, user tried to start a sub-variant -->
+  <UModal v-model:open="showLockedSheet">
+    <template #content>
+      <div class="p-4 sm:p-6">
+        <div class="mb-5 flex items-start gap-3">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--ui-primary)/10">
+            <UIcon name="i-lucide-lock" class="text-(--ui-primary)" />
+          </div>
+          <div>
+            <h3 class="font-semibold">Grundvariante noch nicht gemeistert</h3>
+            <p class="mt-1 text-sm text-(--ui-text-muted)">
+              Um <strong class="text-(--ui-text)">„{{ lockedAction?.label }}"</strong>
+              von der Grundposition zu starten, meistere erst
+              <strong class="text-(--ui-text)">„{{ baseLineName }}"</strong>.
+            </p>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2">
+          <UButton
+            color="primary"
+            icon="i-lucide-play"
+            block
+            @click="confirmLearnBase"
+          >
+            „{{ baseLineName }}" jetzt üben
+          </UButton>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            block
+            @click="confirmLearnAnyway"
+          >
+            Trotzdem ohne Grundposition üben
+          </UButton>
+        </div>
+      </div>
+    </template>
+  </UModal>
 </template>
