@@ -151,7 +151,7 @@ describe('isDefenseFamily', () => {
 })
 
 describe('userSideForLine', () => {
-  it('returns black for defenses (so white moves first visually)', () => {
+  it('returns black for top-level defense families', () => {
     expect(userSideForLine('Alekhine Defense', ['e4', 'Nf6'])).toBe('black')
     expect(userSideForLine('Sicilian Defense', ['e4', 'c5'])).toBe('black')
   })
@@ -160,6 +160,24 @@ describe('userSideForLine', () => {
     expect(userSideForLine('Italian Game', ['e4', 'e5'])).toBe('white')
     expect(userSideForLine("King's Gambit", ['e4', 'e5', 'f4'])).toBe('white')
     expect(userSideForLine('Bongcloud Attack', ['e4'])).toBe('white')
+  })
+
+  it('returns black for nested defense sub-variants within an opening family', () => {
+    // "Italian Game: Hungarian Defense" → path[0] = "Hungarian Defense"
+    expect(userSideForLine('Italian Game', [], ['Hungarian Defense'])).toBe('black')
+    // "Italian Game: Hungarian Defense, Tartakower Variation" → path[0] = "Hungarian Defense"
+    expect(userSideForLine('Italian Game', [], ['Hungarian Defense', 'Tartakower Variation'])).toBe('black')
+    // "Italian Game: Anti-Fried Liver Defense"
+    expect(userSideForLine('Italian Game', [], ['Anti-Fried Liver Defense'])).toBe('black')
+  })
+
+  it('returns white for non-defense nested sub-variants', () => {
+    // "Italian Game: Classical Variation" is not a defense
+    expect(userSideForLine('Italian Game', [], ['Classical Variation'])).toBe('white')
+    // "Italian Game: Giuoco Pianissimo" is not a defense
+    expect(userSideForLine('Italian Game', [], ['Giuoco Pianissimo'])).toBe('white')
+    // Only path[0] matters — inner segments named "...Defense" don't flip the side
+    expect(userSideForLine('Italian Game', [], ['Classical Variation', 'Albin Defense'])).toBe('white')
   })
 })
 

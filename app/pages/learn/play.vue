@@ -435,7 +435,16 @@ const startLine = (
     }
   }
 
-  const parent = forcedParent ?? findParentLine(t, line, progress)
+  const rawParent = forcedParent ?? findParentLine(t, line, progress)
+  // Discard a parent that leaves no user moves after the prefix — the session
+  // would complete instantly (e.g. Hungarian Defense base after Italian Game:
+  // only Be7 remains, which is the opponent's move, giving the user nothing to do).
+  const hasUserMoveAfterPrefix = (p: Line): boolean =>
+    line.sanMoves.slice(p.sanMoves.length).some((_, i) => {
+      const idx = p.sanMoves.length + i
+      return (idx % 2 === 0) === (line.userSide === 'white')
+    })
+  const parent = rawParent && hasUserMoveAfterPrefix(rawParent) ? rawParent : null
   parentLine.value = parent
   const hasRealParent =
     !!parent

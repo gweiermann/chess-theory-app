@@ -103,9 +103,17 @@ export const buildLineId = (eco: string, fullName: string): string => {
  * else the user plays from white. This is kept as a single entry point so
  * the same derivation is available to tests, the pre-processing script,
  * and any runtime reclassification.
+ *
+ * `path` contains the comma-separated segments after the colon in the full
+ * name (e.g. ["Hungarian Defense", "Tartakower Variation"] for
+ * "Italian Game: Hungarian Defense, Tartakower Variation"). If the first
+ * path segment is itself a defense, the line is drilled from black's side
+ * even though its top-level family is an opening.
  */
-export const userSideForLine = (family: string, _sanMoves: string[]): Side => {
-  return isDefenseFamily(family) ? 'black' : 'white'
+export const userSideForLine = (family: string, _sanMoves: string[], path: string[] = []): Side => {
+  if (isDefenseFamily(family)) return 'black'
+  if (path.length > 0 && isDefenseFamily(path[0]!.trim())) return 'black'
+  return 'white'
 }
 
 /** @deprecated Kept for tests that predate the defense-aware variant. */

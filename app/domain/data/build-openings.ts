@@ -91,7 +91,7 @@ export const buildDatasetFromTsv = (tsv: string): OpeningsDataset => {
     const sanMoves = parsePgnToSan(row.pgn)
     if (sanMoves.length === 0) continue
     const topicId = topicIdForFirstSan(sanMoves[0])
-    const { family: rawFamily } = splitFamilyAndPath(row.fullName)
+    const { family: rawFamily, path } = splitFamilyAndPath(row.fullName)
     // Fold "<x> Accepted"/"<x> Declined" into "<x>" so the two branches
     // live in the same UI group. The side is derived from the normalized
     // name so a merged gambit keeps white-to-move even if its accepted
@@ -104,7 +104,7 @@ export const buildDatasetFromTsv = (tsv: string): OpeningsDataset => {
       fullName: row.fullName,
       pgn: row.pgn,
       sanMoves,
-      userSide: userSideForLine(family, sanMoves),
+      userSide: userSideForLine(family, sanMoves, path),
     }
 
     let families = linesByTopic.get(topicId)
