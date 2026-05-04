@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import BasePageHeader from '~/components/base/BasePageHeader.vue'
 import { useProfileSettings } from '~/composables/useProfileSettings'
 
 const { autoPlayParentPrefix } = useProfileSettings()
@@ -10,15 +11,11 @@ const autoPlayLabel = computed(() =>
 
 <template>
   <div class="mx-auto w-full max-w-3xl px-4 py-6 sm:py-8">
-    <header class="mb-6 flex flex-col gap-2 sm:mb-8">
-      <p class="text-xs uppercase tracking-widest text-(--ui-text-muted)">
-        Profil
-      </p>
-      <h1 class="text-2xl font-semibold sm:text-4xl">Dein Bereich</h1>
-      <p class="text-sm text-(--ui-text-muted) sm:text-base">
-        Hier findest du deinen Fortschritt und deine Lernaktivität.
-      </p>
-    </header>
+    <BasePageHeader
+      eyebrow="Profil"
+      title="Dein Bereich"
+      description="Hier findest du deinen Fortschritt und deine Lernaktivität."
+    />
 
     <UCard>
       <div class="flex items-center justify-between gap-3">

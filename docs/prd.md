@@ -328,7 +328,9 @@ Parent/child is defined by **strict prefix** of full `sanMoves` (see `docs/gloss
 - **N2. Accessibility:** Phase/banners use polite live regions; icon buttons have **aria-label** where text is visually secondary.
 - **N3. Internationalization:** Today **German-only**; if English ships later, all user-visible strings must go through i18n layer.
 - **N4. SEO / sharing:** Play session is client state; shared URLs should remain meaningful for **openings routes** (`path` query).
-- **N5. Testing:** Critical flows covered by unit/integration tests (`vitest`) and e2e (`playwright`) per repo conventions.
+- **N5. Testing:** Critical flows covered by unit/integration tests (`vitest`) and e2e (`playwright`) per repo conventions. UI atoms and feature components ship with co-located unit tests against `@vue/test-utils`; reusable composables (`useTopicSearch`, etc.) get their own spec.
+- **N6. Component workshop:** Reusable UI components are developed and reviewed in **Storybook** (`pnpm storybook`). Each component ships with co-located `*.stories.ts` covering its meaningful states. The static bundle (`pnpm build-storybook`) doubles as a design reference.
+  - *Note:* `@nuxtjs/storybook` 9.0.1 is incompatible with Nuxt 4 (transitive `@nuxt/vite-builder@3.x` clashes with Nuxt 4's built-in vite and breaks `@nuxt/ui` resolution). It is intentionally **not registered** as a Nuxt module in `nuxt.config.ts`. Storybook is invoked as a standalone CLI; the `@storybook-vue/nuxt` framework still works for stories without the module wrapper.
 
 ---
 
@@ -345,5 +347,10 @@ Parent/child is defined by **strict prefix** of full `sanMoves` (see `docs/gloss
 
 - Domain vocabulary: `docs/glossary.md`.
 - Key implementation anchors: `app/pages/learn/play.vue`, `app/pages/openings/**`, `app/composables/training-session`, `app/domain/session.ts` (`TARGET_REPS`), `app/infra/selection-repository.ts`, `app/composables/useProfileSettings.ts`.
+- UI building blocks: `app/design/tokens.ts` (radius / surface / padding / heading / body / focusRing), `app/components/base/**` (atoms — `BasePageHeader`, `BaseProgressBar`, `BaseSelectableCard`, `BaseEmptyState`, `BaseLoadingState`, `BaseErrorAlert`, `BaseSectionHeading`, `BaseStatPill`, `BaseIconAction`).
+- Feature components grouped by page: `app/components/play/**` (board panel, action bar, top bar, action sheet, phase + feedback banners, help + complete modals, empty state), `app/components/family/**` (breadcrumb, header, base-line card, info banner, child rows, tree list, locked dialog), `app/components/topic/**` (header, family grid + card, search bar), `app/components/activity/**` (list + item).
+- Play composables: `useSessionFlow` (board lock, hint, opponent auto-play, premove buffer), `useReplayControls` (move-history step + view), `useScopedProgress` (mastery counter scoped to focus), `usePlayHeadings` (page title + phase label), `useLineLifecycle` (start/next/restart/skip/previous + mastery finalisation).
+- Page composables: `useFamilyTree`, `useFamilyNavigation`, `useLockedActions`, `useTopicSearch`.
+- Pure-domain helpers: `app/domain/line-setup.ts` (`computeLineSetup`).
 
 This PRD describes **observed and code-backed behavior** as of the revision date; when implementation diverges, either update the PRD or treat the mismatch as a defect, per team policy.

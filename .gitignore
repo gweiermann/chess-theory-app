@@ -28,3 +28,6 @@ test-results/
 
 # auto generated data
 public/data/openings/
+
+# storybook
+storybook-static/

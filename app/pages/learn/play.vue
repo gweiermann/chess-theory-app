@@ -1,33 +1,36 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTopic } from '~/composables/useTopic'
 import { useTopicProgress } from '~/composables/useTopicProgress'
 import { useCurrentSelection } from '~/composables/useCurrentSelection'
 import { useLearnState } from '~/composables/useLearnState'
-import {
-  createTrainingSession,
-} from '~/composables/training-session'
+import { useSessionFlow } from '~/composables/useSessionFlow'
+import { useReplayControls } from '~/composables/useReplayControls'
+import { useScopedProgress } from '~/composables/useScopedProgress'
+import { usePlayHeadings } from '~/composables/usePlayHeadings'
+import { useLineLifecycle } from '~/composables/useLineLifecycle'
 import { useProfileSettings } from '~/composables/useProfileSettings'
-import { findParentLine, selectLineForFocus } from '~/domain/select-next-line'
 import {
   getResetReason,
   isNewStepMove,
-  willMoveTriggerReset,
-  TARGET_REPS,
   type PhaseMarkers,
-  type ResetReason,
 } from '~/domain/session'
-import { isOpponentPly } from '~/domain/training-turn'
-import type { Line, LineProgress, Topic } from '~/domain/types'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
+import PlayEmptyState from '~/components/play/PlayEmptyState.vue'
+import PlayTopBar from '~/components/play/PlayTopBar.vue'
+import PlayActionBar from '~/components/play/PlayActionBar.vue'
+import PlayActionSheet from '~/components/play/PlayActionSheet.vue'
+import PlayBoardPanel from '~/components/play/PlayBoardPanel.vue'
+import PlayHelpModal from '~/components/play/PlayHelpModal.vue'
+import PlayCompleteModal from '~/components/play/PlayCompleteModal.vue'
+import BaseErrorAlert from '~/components/base/BaseErrorAlert.vue'
+import BaseLoadingState from '~/components/base/BaseLoadingState.vue'
 
 definePageMeta({ layout: 'play' })
 
-const OPPONENT_DELAY_MS = 350
 const STEP_RESET_DELAY_MS = 600
 const NEXT_LINE_DELAY_MS = 1500
-const PREFIX_REPLAY_DELAY_MS = 120
 
 const router = useRouter()
 const goBack = () => router.back()
@@ -35,238 +38,68 @@ const { $repositories } = useNuxtApp()
 const { selection, set: setSelection, refresh: refreshSelection } = useCurrentSelection()
 /** Re-read persisted selection so /learn/play matches storage (singleton composable can be stale across navigations). */
 refreshSelection()
-const learnState = useLearnState()
+const { currentLine, session, demonstratedSteps, allMastered } = useLearnState()
 const { autoPlayParentPrefix } = useProfileSettings()
 
 const topicIdRef = computed(() => selection.value?.topicId ?? null)
 const { topic, loading, error } = useTopic(topicIdRef)
 
-const {
+const board = ref<InstanceType<typeof ChessBoardComponent> | null>(null)
+const progressApi = shallowRef<ReturnType<typeof useTopicProgress> | null>(null)
+const showInfoModal = ref(false)
+const showActionSheet = ref(false)
+const flowLocked = ref(false)
+
+const replay = useReplayControls({
+  session,
+  currentLine,
+  board,
+  flowLocked,
+})
+
+const flow = useSessionFlow({
+  session,
+  currentLine,
+  demonstratedSteps,
+  board,
+  flowLocked,
+  isReplayMode: replay.isReplayMode,
+  resetReplayView: replay.resetView,
+})
+
+const { masteredCount, totalLineCount } = useScopedProgress({
+  topic,
+  selection,
+  currentLine,
+  progressApi,
+})
+
+const { focusedFamilyName, phaseLabel, displayLineName } = usePlayHeadings({
+  topic,
+  selection,
+  currentLine,
+  session,
+})
+
+const lifecycle = useLineLifecycle({
+  topic,
+  selection,
   currentLine,
   session,
   demonstratedSteps,
   allMastered,
-} = learnState
-
-const board = ref<InstanceType<typeof ChessBoardComponent> | null>(null)
-const progressApi = shallowRef<ReturnType<typeof useTopicProgress> | null>(null)
-const isResetting = ref(false)
-const hintActive = ref(false)
-const showInfoModal = ref(false)
-const showActionSheet = ref(false)
-const flowLocked = ref(false)
-const viewedPly = ref<number | null>(null)
-
-/**
- * Premove buffer. Chessground auto-applies a queued premove SYNCHRONOUSLY
- * inside `api.move(opponentSan)`, firing our `user-move` event BEFORE we
- * `await s.submit(opponentSan)`. Naively forwarding that event would race
- * the opponent's submit. We buffer premoves during opponent turns instead
- * and flush them after the opponent move has been persisted.
- */
-let opponentInFlight = false
-let pendingUserMove: string | null = null
-
-
-const currentFamily = computed(() => {
-  const line = currentLine.value
-  const t = topic.value
-  if (!line || !t) return null
-  return t.families.find((f) => f.lines.some((l) => l.id === line.id)) ?? null
+  progressApi,
+  board,
+  flow,
+  replay,
+  setSelection,
+  closeOverlays: () => {
+    showActionSheet.value = false
+    showInfoModal.value = false
+  },
+  $repositories,
+  autoPlayParentPrefix,
 })
-
-const focusedFamilyName = computed(() => {
-  const sel = selection.value
-  const t = topic.value
-  if (!sel || !t) return null
-  const focus = sel.focus
-  if (focus.kind === 'family') {
-    return t.families.find((f) => f.id === focus.familyId)?.name ?? null
-  }
-  return currentFamily.value?.name ?? null
-})
-
-const maxReplayPly = computed(() => session.value?.state.value.expectedMoveIndex ?? 0)
-const activeReplayPly = computed(() => viewedPly.value ?? maxReplayPly.value)
-const isReplayMode = computed(() => activeReplayPly.value < maxReplayPly.value)
-
-const canGoBackward = computed(() => activeReplayPly.value > 0)
-const canGoForward = computed(
-  () => activeReplayPly.value < maxReplayPly.value,
-)
-
-// Scope progress to the current family (or family of the focused line), not
-// the whole topic – the whole topic can have thousands of lines.
-const progressScopedLines = computed(() => {
-  const t = topic.value
-  const sel = selection.value
-  if (!t || !sel) return []
-  const focus = sel.focus
-  if (focus.kind === 'node') {
-    const lineIdSet = new Set(focus.lineIds)
-    return t.families.flatMap((f) => f.lines).filter((l) => lineIdSet.has(l.id))
-  }
-  if (focus.kind === 'line' && focus.exclusive) {
-    const line = t.families.flatMap((f) => f.lines).find((l) => l.id === focus.lineId)
-    return line ? [line] : []
-  }
-  let familyId: string | null = null
-  if (focus.kind === 'family') familyId = focus.familyId
-  else if (focus.kind === 'line') {
-    familyId = t.families.find((f) => f.lines.some((l) => l.id === focus.lineId))?.id ?? null
-  }
-  if (!familyId) {
-    const line = currentLine.value
-    if (line) familyId = t.families.find((f) => f.lines.some((l) => l.id === line.id))?.id ?? null
-  }
-  const family = familyId ? t.families.find((f) => f.id === familyId) : null
-  return family?.lines ?? t.families.flatMap((f) => f.lines)
-})
-const masteredCount = computed(() => {
-  const ids = new Set(progressScopedLines.value.map((l) => l.id))
-  return progressApi.value?.progress.value.filter((p) => p.status === 'mastered' && ids.has(p.lineId)).length ?? 0
-})
-const totalLineCount = computed(() => progressScopedLines.value.length)
-const phaseLabel = computed(() => {
-  const s = session.value?.state.value
-  if (!s) return ''
-  switch (s.phase) {
-    case 'intro':
-      return 'Einführung'
-    case 'building':
-      return `Aufbau · Schritt ${s.currentStep} von ${s.totalSteps}`
-    case 'repeating':
-      return `Wiederholung · ${s.repsDone + 1} von ${TARGET_REPS}`
-    case 'done':
-      return 'Fertig'
-    default:
-      return ''
-  }
-})
-
-// Strip everything before and including the first colon so the h1 only shows
-// the variation name ("Dutch Variation, Batavo Gambit") — the family name
-// ("Bird Opening") is already shown in the topic label row above.
-const displayLineName = computed(() => {
-  const name = currentLine.value?.fullName ?? ''
-  const idx = name.indexOf(':')
-  return idx === -1 ? name : name.slice(idx + 1).trim()
-})
-
-const setBoardLocked = (locked: boolean): void => {
-  flowLocked.value = locked
-  board.value?.setLocked(flowLocked.value || isReplayMode.value)
-}
-
-const clearHintArrow = (): void => {
-  if (!hintActive.value) return
-  board.value?.clearHints()
-  hintActive.value = false
-}
-
-const showHintForExpected = (): boolean => {
-  const s = session.value
-  if (!s) return false
-  const san = s.state.value.expectedSan
-  if (!san) return false
-  const ok = board.value?.drawHintForSan(san) ?? false
-  if (ok) hintActive.value = true
-  return ok
-}
-
-const showHintIfNewStep = (): void => {
-  const s = session.value
-  if (!s) return
-  if (!isNewStepMove(s.state.value)) return
-  if (demonstratedSteps.value.has(s.state.value.currentStep)) return
-  showHintForExpected()
-}
-
-const playOpponentIfNeeded = async (): Promise<void> => {
-  const s = session.value
-  const line = currentLine.value
-  if (!s || !line) return
-  const state = s.state.value
-  if (
-    state.phase !== 'intro'
-    && state.phase !== 'building'
-    && state.phase !== 'repeating'
-  ) return
-  if (!isOpponentPly(line, state.expectedMoveIndex)) return
-  const opponentSan = line.sanMoves[state.expectedMoveIndex]
-  if (!opponentSan) return
-
-  // Will this opponent move push the session across a reset boundary
-  // (next step / next rep / phase change)? If so we must NOT let the user
-  // premove across the reset - any queued premove is discarded.
-  const willReset = willMoveTriggerReset(state, opponentSan)
-
-  opponentInFlight = true
-  // When the opponent move would trigger a reset, lock the board fully so
-  // chessground cannot even queue a premove. Otherwise we keep the board
-  // in its current state so the user can click a piece and have chessground
-  // queue it as a ghost premove that gets auto-applied right after the
-  // opponent's move lands. The premove fires our `user-move` synchronously
-  // - `opponentInFlight` causes that handler to buffer instead of race.
-  if (willReset) setBoardLocked(true)
-
-  await new Promise((r) => setTimeout(r, OPPONENT_DELAY_MS))
-  const ok = board.value?.playOpponentSan(opponentSan)
-  if (!ok) {
-    opponentInFlight = false
-    pendingUserMove = null
-    setBoardLocked(false)
-    return
-  }
-  await s.submit(opponentSan)
-  opponentInFlight = false
-  if (willReset) setBoardLocked(false)
-
-  // Flush any premove that was auto-applied on the board while the opponent
-  // was moving. Drop the buffer outright if the opponent's move just reset
-  // the session (the premove was made against an outdated position).
-  const queued = pendingUserMove
-  pendingUserMove = null
-  if (!willReset && queued !== null && !isReplayMode.value) {
-    await processUserMove(queued)
-    return
-  }
-
-  // Reset the viewed ply after a successful opponent move.
-  viewedPly.value = null
-
-  // Some black-side lines enter the next phase on an opponent move
-  // boundary. Keep auto-playing until it is truly the user's turn.
-  const nextState = s.state.value
-  if (
-    nextState.phase !== 'done'
-    && isOpponentPly(line, nextState.expectedMoveIndex)
-  ) {
-    await playOpponentIfNeeded()
-  }
-}
-
-/**
- * Auto-play the prefix plies (the parent's moves) onto the board in one go.
- * Used on every reset (step / rep change) AFTER the user has completed the
- * intro – the user should never have to replay the parent by hand during
- * a drill loop. Used at session start only when `skipIntro` is on.
- */
-const replayPrefixOntoBoard = async (instant = false): Promise<void> => {
-  const line = currentLine.value
-  const s = session.value
-  if (!line || !s) return
-  const prefix = s.state.value.prefixPlies
-  if (prefix <= 0) return
-  for (let i = 0; i < prefix; i += 1) {
-    const san = line.sanMoves[i]
-    if (!san) break
-    board.value?.playOpponentSan(san)
-    if (!instant && i < prefix - 1) {
-      await new Promise((r) => setTimeout(r, PREFIX_REPLAY_DELAY_MS))
-    }
-  }
-}
 
 const markers = (): PhaseMarkers | null => {
   const s = session.value
@@ -279,207 +112,19 @@ const markers = (): PhaseMarkers | null => {
   }
 }
 
-const resetBoardForNextAttempt = async (): Promise<void> => {
-  isResetting.value = true
-  clearHintArrow()
-  board.value?.setAnimationEnabled(false)
-  board.value?.reset()
-  await nextTick()
-  await replayPrefixOntoBoard(true)
-  board.value?.setAnimationEnabled(true)
-  isResetting.value = false
-  await playOpponentIfNeeded()
-  showHintIfNewStep()
-  setBoardLocked(false)
+const onBoardReady = (instance: InstanceType<typeof ChessBoardComponent> | null): void => {
+  board.value = instance
 }
 
-const startLine = (
-  t: Topic,
-  line: Line,
-): void => {
-  showActionSheet.value = false
-  showInfoModal.value = false
-  viewedPly.value = null
-  pendingUserMove = null
-  opponentInFlight = false
-  currentLine.value = line
-  const progress = progressApi.value?.progress.value ?? []
-
-  // When training from a tree node, use that node's own line as a forced
-  // prefix — only if the base line is already mastered (same requirement as
-  // findParentLine). This enforces the learn-the-base-first rule.
-  const focus = selection.value?.focus
-  const masteredSet = new Set(progress.filter((p) => p.status === 'mastered').map((p) => p.lineId))
-  let forcedParent: Line | null = null
-  if (focus?.kind === 'node' && focus.prefixLineId && focus.prefixLineId !== line.id) {
-    const candidate = t.families.flatMap((f) => f.lines).find((l) => l.id === focus.prefixLineId) ?? null
-    if (
-      candidate
-      && masteredSet.has(candidate.id)
-      && candidate.sanMoves.length > 0
-      && candidate.sanMoves.length < line.sanMoves.length
-      // Prefix moves must actually match the line's opening moves
-      && candidate.sanMoves.every((san, i) => san === line.sanMoves[i])
-      // At least one user move must remain after the prefix (otherwise the
-      // session would start in 'done' state — e.g. a 6-move line whose only
-      // extra move beyond the 5-move base is the opponent's response)
-      && line.sanMoves.slice(candidate.sanMoves.length).some((_, i) => {
-        const idx = candidate.sanMoves.length + i
-        return (idx % 2 === 0) === (line.userSide === 'white')
-      })
-    ) {
-      forcedParent = candidate
-    }
-  }
-
-  const rawParent = forcedParent ?? findParentLine(t, line, progress)
-  // Discard a parent that leaves no user moves after the prefix — the session
-  // would complete instantly (e.g. Hungarian Defense base after Italian Game:
-  // only Be7 remains, which is the opponent's move, giving the user nothing to do).
-  const hasUserMoveAfterPrefix = (p: Line): boolean =>
-    line.sanMoves.slice(p.sanMoves.length).some((_, i) => {
-      const idx = p.sanMoves.length + i
-      return (idx % 2 === 0) === (line.userSide === 'white')
-    })
-  const parent = rawParent && hasUserMoveAfterPrefix(rawParent) ? rawParent : null
-  const hasRealParent =
-    !!parent
-    && parent.sanMoves.length > 0
-    && parent.sanMoves.length < line.sanMoves.length
-
-  const userExplicitSelection =
-    !!forcedParent
-    || (focus?.kind === 'node' && !!focus.prefixLineId)
-    || (focus?.kind === 'line' && focus.exclusive)
-
-  const prefixPlies = hasRealParent ? parent!.sanMoves.length : 0
-
-  // A parent is defined by its USER moves being a prefix of the child's
-  // user moves. For defenses (userSide=black) the first ply belongs to
-  // the opponent, so the "virtual" single-ply prefix is not something
-  // the user can play by hand – skip the intro in that case. Real
-  // parents always share userSide and are valid intro candidates.
-  const introIsPlayable = hasRealParent
-
-  // The intro phase prompts the user to play the prefix moves by hand so
-  // they reach the parent's base position from memory. The /profile toggle
-  // `autoPlayParentPrefix` skips this manual walkthrough and auto-plays
-  // the prefix instead – intended for experienced users who already know
-  // the parent inside out.
-  const runsIntro = introIsPlayable && prefixPlies > 0 && !autoPlayParentPrefix.value && !userExplicitSelection
-  const skipIntro = !runsIntro
-
-  const repo = $repositories.createProgressRepository(t)
-  const activityRecorder = {
-    topicId: t.id,
-    record: (event: Parameters<typeof $repositories.activity.append>[0]) =>
-      $repositories.activity.append(event),
-  }
-  session.value = createTrainingSession({
-    line,
-    repo,
-    activityRecorder,
-    prefixPlies,
-    skipIntro,
-  })
-  demonstratedSteps.value = new Set()
-  clearHintArrow()
-  setBoardLocked(true)
-
-  setTimeout(async () => {
-    board.value?.setAnimationEnabled(false)
-    board.value?.reset()
-    await nextTick()
-    if (skipIntro && prefixPlies > 0) {
-      await replayPrefixOntoBoard(true)
-    }
-    board.value?.setAnimationEnabled(true)
-    await playOpponentIfNeeded()
-    // showHintIfNewStep is a no-op during intro (isNewStepMove checks for
-    // building phase), so it's safe to call unconditionally. When intro
-    // runs and the opponent auto-plays its way into building (e.g. a
-    // defense where the opening first move is white's), this arms the
-    // first arrow automatically.
-    showHintIfNewStep()
-    setBoardLocked(false)
-  }, 50)
-}
-
-/**
- * When the user has just finished ("mastered" or "skipped") the current
- * line, but their selection still points EXACTLY at that line (often with
- * the `exclusive` flag set after navigating via the previous/parent
- * button), the next `selectLineForFocus` call would return the same
- * mastered line and progression would stall. Broaden the selection to
- * the containing family so we always advance.
- */
-const broadenSelectionAfterCompletion = (): void => {
-  const sel = selection.value
-  const t = topic.value
-  const line = currentLine.value
-  if (!sel || !t || !line) return
-  if (sel.focus.kind !== 'line') return
-  if (sel.focus.lineId !== line.id) return
-  const family = t.families.find((f) => f.lines.some((l) => l.id === line.id))
-  if (!family) return
-  setSelection({
-    topicId: t.id,
-    focus: { kind: 'family', familyId: family.id },
-  })
-}
-
-const startNextLine = (t: Topic): void => {
-  if (!progressApi.value || !selection.value) {
-    allMastered.value = false
-    currentLine.value = null
-    session.value = null
-    return
-  }
-  const next = selectLineForFocus(
-    t,
-    selection.value.focus,
-    progressApi.value.progress.value,
-  )
-  if (!next) {
-    allMastered.value = true
-    currentLine.value = null
-    session.value = null
-    return
-  }
-  allMastered.value = false
-  startLine(t, next)
-}
-
-/**
- * Replay the moves of the currently running session onto a freshly mounted
- * board. Used on tab re-entry so the user returns to the exact position
- * they left – without this the board would be empty while the session
- * thinks we are already several plies in.
- */
-const rehydrateBoardFromSession = async (): Promise<void> => {
-  const line = currentLine.value
-  const s = session.value
-  if (!line || !s) return
-  viewedPly.value = null
-  setBoardLocked(true)
-  await nextTick()
-  await new Promise((r) => setTimeout(r, 50))
-  board.value?.setAnimationEnabled(false)
-  board.value?.reset()
-  await nextTick()
-  const idx = s.state.value.expectedMoveIndex
-  for (let i = 0; i < idx; i += 1) {
-    const san = line.sanMoves[i]
-    if (!san) break
-    board.value?.playOpponentSan(san)
-  }
-  await nextTick()
-  board.value?.setAnimationEnabled(true)
-  if (isNewStepMove(s.state.value) && !demonstratedSteps.value.has(s.state.value.currentStep)) {
-    showHintForExpected()
-  }
-  setBoardLocked(false)
-}
+const {
+  startNextLine,
+  restartLine,
+  skipLine,
+  goToPreviousLine,
+  finalizeMastery,
+  broadenSelectionAfterCompletion,
+  selectionPointsAt,
+} = lifecycle
 
 watch(
   topic,
@@ -500,31 +145,13 @@ watch(
     const focusStillPoints = runningBelongsToTopic
       && !!selectionPointsAt(existing!)
     if (runningBelongsToTopic && focusStillPoints && session.value) {
-      await rehydrateBoardFromSession()
+      await flow.rehydrateBoardFromSession()
       return
     }
     startNextLine(t)
   },
   { immediate: true },
 )
-
-/**
- * True if the current `selection` still ultimately resolves to {@link line}.
- * We compare by line id because a focus of kind 'topic' or 'family' can
- * legitimately land on many lines – what matters is whether the running
- * session would be the next pick right now.
- */
-const selectionPointsAt = (line: Line): boolean => {
-  const t = topic.value
-  const sel = selection.value
-  const progress = progressApi.value?.progress.value ?? []
-  if (!t || !sel) return false
-  if (sel.topicId !== t.id) return false
-  const focus = sel.focus
-  if (focus.kind === 'line' && focus.lineId === line.id) return true
-  const next = selectLineForFocus(t, focus, progress)
-  return next?.id === line.id
-}
 
 watch(
   () => selection.value,
@@ -546,31 +173,19 @@ watch(
   },
 )
 
-const finalizeMastery = (): void => {
-  if (!currentLine.value || !progressApi.value) return
-  progressApi.value.progress.value = progressApi.value.progress.value
-    .filter((p) => p.lineId !== currentLine.value!.id)
-    .concat([{
-      lineId: currentLine.value.id,
-      status: 'mastered',
-      reps: TARGET_REPS,
-      lastPracticedAt: Date.now(),
-    }])
-}
-
 const handleUserMove = async (san: string): Promise<void> => {
-  if (isReplayMode.value) return
-  if (opponentInFlight) {
+  if (replay.isReplayMode.value) return
+  if (flow.isOpponentInFlight()) {
     // The user pre-moved while the opponent was moving. Buffer it through
     // our submit pipeline instead of letting it race the opponent's submit.
-    pendingUserMove = san
+    flow.bufferUserMove(san)
     return
   }
   await processUserMove(san)
 }
 
 const processUserMove = async (san: string): Promise<void> => {
-  if (isResetting.value) return
+  if (flow.isResetting.value) return
   const s = session.value
   const line = currentLine.value
   if (!s || !line) return
@@ -581,15 +196,15 @@ const processUserMove = async (san: string): Promise<void> => {
   const result = await s.submit(san)
 
   if (result.result === 'wrong') {
-    setBoardLocked(true)
+    flow.setBoardLocked(true)
     setTimeout(() => {
       board.value?.undoLastMove()
-      setBoardLocked(false)
+      flow.setBoardLocked(false)
     }, 200)
     return
   }
 
-  clearHintArrow()
+  flow.clearHintArrow()
   if (wasNewStepMove) demonstratedSteps.value.add(before.currentStep)
 
   const afterUser = markers()!
@@ -597,127 +212,50 @@ const processUserMove = async (san: string): Promise<void> => {
   if (afterUser.phase === 'done') {
     finalizeMastery()
     broadenSelectionAfterCompletion()
-    setBoardLocked(true)
+    flow.setBoardLocked(true)
     setTimeout(() => topic.value && startNextLine(topic.value), NEXT_LINE_DELAY_MS)
     return
   }
 
   const reasonAfterUser = getResetReason(before, afterUser)
   if (reasonAfterUser !== null) {
-    setBoardLocked(true)
-    setTimeout(() => resetBoardForNextAttempt(), STEP_RESET_DELAY_MS)
+    flow.setBoardLocked(true)
+    setTimeout(() => flow.resetBoardForNextAttempt(), STEP_RESET_DELAY_MS)
     return
   }
 
-  await playOpponentIfNeeded()
+  await flow.playOpponentIfNeeded()
+
+  // Flush a premove that landed during the opponent turn: useSessionFlow
+  // exits early when one is queued so we can run it through processUserMove
+  // here (nesting recursion through this same function).
+  const queued = flow.flushBufferedUserMove()
+  if (queued !== null && !replay.isReplayMode.value) {
+    await processUserMove(queued)
+    return
+  }
 
   const afterOpponent = markers()!
   if (afterOpponent.phase === 'done') {
     finalizeMastery()
     broadenSelectionAfterCompletion()
-    setBoardLocked(true)
+    flow.setBoardLocked(true)
     setTimeout(() => topic.value && startNextLine(topic.value), NEXT_LINE_DELAY_MS)
     return
   }
 
   const reasonAfterOpponent = getResetReason(before, afterOpponent)
   if (reasonAfterOpponent !== null) {
-    setBoardLocked(true)
-    setTimeout(() => resetBoardForNextAttempt(), STEP_RESET_DELAY_MS)
+    flow.setBoardLocked(true)
+    setTimeout(() => flow.resetBoardForNextAttempt(), STEP_RESET_DELAY_MS)
     return
   }
 
-  showHintIfNewStep()
-}
-
-const skipLine = () => {
-  if (!topic.value || !currentLine.value || !progressApi.value) return
-  showActionSheet.value = false
-  const t = topic.value
-  const skipped: LineProgress = {
-    lineId: currentLine.value.id,
-    status: 'mastered',
-    reps: TARGET_REPS,
-    lastPracticedAt: Date.now(),
-  }
-  // Persist to the repository BEFORE broadening the selection. Broadening
-  // triggers the selection watcher which calls progressApi.refresh() that
-  // re-reads from localStorage – without persistence first, refresh would
-  // wipe the in-memory mastery and progression would stall on the just-
-  // skipped line.
-  const repo = $repositories.createProgressRepository(t)
-  void repo.saveLine(skipped)
-  progressApi.value.progress.value = progressApi.value.progress.value
-    .filter((p) => p.lineId !== skipped.lineId)
-    .concat([skipped])
-  broadenSelectionAfterCompletion()
-  startNextLine(t)
-}
-
-const restartLine = () => {
-  if (!topic.value || !currentLine.value) return
-  showActionSheet.value = false
-  startLine(topic.value, currentLine.value)
-}
-
-
-const orderedTopicLines = (t: Topic): Line[] =>
-  t.families.flatMap((family) => family.lines)
-
-const goToPreviousLine = (): void => {
-  const t = topic.value
-  const line = currentLine.value
-  if (!t || !line) return
-  showActionSheet.value = false
-  const lines = orderedTopicLines(t)
-  const idx = lines.findIndex((entry) => entry.id === line.id)
-  if (idx <= 0) return
-  const previous = lines[idx - 1]
-  if (!previous) return
-  setSelection({
-    topicId: t.id,
-    focus: { kind: 'line', lineId: previous.id, exclusive: true },
-  })
-  startLine(t, previous)
-}
-
-/**
- * Step the chessboard one ply forward or backward through the CURRENT
- * game's move history (replaying or undoing the SAN that was actually
- * played), bounded by the live position so we never reveal unlearned
- * moves. We animate backward via `undoLastMove` so the pieces visually
- * return to their previous squares – just replaying forward to ply-1
- * would animate the SECOND-TO-LAST move and look like a forward motion.
- */
-const goMoveHistory = async (delta: -1 | 1): Promise<void> => {
-  const max = maxReplayPly.value
-  const current = activeReplayPly.value
-  const next = Math.min(Math.max(current + delta, 0), max)
-  if (next === current) return
-
-  const line = currentLine.value
-  if (!line) return
-
-  if (next < current) {
-    for (let i = 0; i < current - next; i += 1) {
-      board.value?.undoLastMove()
-      await nextTick()
-    }
-  } else {
-    for (let i = current; i < next; i += 1) {
-      const san = line.sanMoves[i]
-      if (!san) break
-      board.value?.playOpponentSan(san)
-      await nextTick()
-    }
-  }
-
-  viewedPly.value = next === max ? null : next
-  board.value?.setLocked(flowLocked.value || isReplayMode.value)
+  flow.showHintIfNewStep()
 }
 
 const showHelp = (): void => {
-  const ok = showHintForExpected()
+  const ok = flow.showHintForExpected()
   if (!ok) return
   const t = topic.value
   const line = currentLine.value
@@ -737,215 +275,81 @@ const goToOpenings = (): void => {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-  <!-- Empty state -->
-  <div v-if="!selection" class="flex flex-1 items-center justify-center p-6">
-    <div class="rounded-xl border border-(--ui-border) p-6 text-center">
-      <UIcon name="i-lucide-graduation-cap" class="mx-auto h-8 w-8 text-(--ui-text-muted)" />
-      <h1 class="mt-3 text-xl font-semibold">Noch keine Zugfolge ausgewählt</h1>
-      <p class="mx-auto mt-2 max-w-md text-sm text-(--ui-text-muted)">
-        Wähle in den Eröffnungen eine Gruppe, eine Eröffnung oder eine
-        konkrete Zugfolge. Sie erscheint dann hier zum Üben.
-      </p>
-      <UButton class="mt-4" color="primary" icon="i-lucide-book-open" @click="goToOpenings">
-        Eröffnungen öffnen
-      </UButton>
-    </div>
-  </div>
+    <PlayEmptyState v-if="!selection" @go-to-openings="goToOpenings" />
 
-  <template v-else>
-    <div v-if="loading && !topic" class="flex flex-1 items-center justify-center p-6 text-(--ui-text-muted)">
-      Lade Thema…
-    </div>
-    <UAlert
-      v-else-if="error"
-      class="m-4"
-      color="error"
-      variant="soft"
-      icon="i-lucide-alert-triangle"
-      :title="error.message"
-    />
-
-    <template v-else-if="topic">
-      <div v-if="allMastered" class="m-4">
-        <UAlert
-          color="success"
-          variant="soft"
-          icon="i-lucide-trophy"
-          title="Alles gemeistert"
-          description="Du hast alle Zugfolgen dieser Auswahl durchgespielt. Wähle eine neue in den Eröffnungen oder in deinem Profil."
-        />
+    <template v-else>
+      <div v-if="loading && !topic" class="flex flex-1 items-center justify-center p-6">
+        <BaseLoadingState message="Lade Thema…" />
       </div>
+      <BaseErrorAlert v-else-if="error" :message="error.message" class="m-4" />
 
-      <div v-else-if="session && currentLine" class="learn-layout">
-        <!-- TOP BAR -->
-        <div class="min-w-0 shrink-0 border-b border-(--ui-border)/50 bg-(--ui-bg)">
-          <!-- Single row: back | topic label (centered) | progress -->
-          <div class="flex items-center gap-2 px-2 py-2">
-            <button
-              class="shrink-0 -ml-1 rounded-lg p-1 text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
-              aria-label="Verlassen"
-              data-testid="play-back-button"
-              @click="goBack"
-            >
-              <UIcon name="i-lucide-chevron-left" class="h-7 w-7" />
-            </button>
-            <p
-              class="flex-1 truncate text-center text-base text-(--ui-text-muted)"
-              data-testid="play-topic-label"
-            >
-              {{ topic.label }}<template v-if="focusedFamilyName"> · {{ focusedFamilyName }}</template>
-            </p>
-            <span
-              class="shrink-0 tabular-nums text-base text-(--ui-text-muted)"
-              data-testid="play-progress"
-            >
-              {{ masteredCount }}/{{ totalLineCount }}
-            </span>
-          </div>
-          <h1
-            class="line-clamp-2 px-4 pb-3 text-center text-xl font-semibold leading-snug"
-            data-testid="learn-line-heading"
+      <template v-else-if="topic">
+        <PlayCompleteModal v-if="allMastered" />
+
+        <div v-else-if="session && currentLine" class="learn-layout">
+          <PlayTopBar
+            :topic-label="topic.label"
+            :family-name="focusedFamilyName"
+            :mastered-count="masteredCount"
+            :total-line-count="totalLineCount"
+            :line-heading="displayLineName"
+            :line-id="currentLine.id"
+            @back="goBack"
+          />
+
+          <div
+            class="shrink-0 relative h-16 w-full overflow-hidden"
+            style="max-width: 560px; margin-inline: auto;"
+            data-testid="play-phase-bar"
           >
-            {{ displayLineName }}
-          </h1>
-          <span class="sr-only" data-testid="play-line-id">{{ currentLine.id }}</span>
-        </div>
-
-        <!-- PHASE LABEL / BANNER SLOT (fixed height — board never moves) -->
-        <div
-          class="shrink-0 relative h-16 w-full overflow-hidden"
-          style="max-width: 560px; margin-inline: auto;"
-          data-testid="play-phase-bar"
-        >
-          <!-- Phase label: always in DOM so toBeVisible() is stable -->
-          <div class="absolute inset-0 flex items-center px-4">
-            <span
-              class="flex-1 truncate text-sm font-medium text-(--ui-primary)"
-              data-testid="play-phase-label"
-            >
-              {{ phaseLabel }}
-            </span>
+            <div class="absolute inset-0 flex items-center px-4">
+              <span
+                class="flex-1 truncate text-sm font-medium text-(--ui-primary)"
+                data-testid="play-phase-label"
+              >
+                {{ phaseLabel }}
+              </span>
+            </div>
           </div>
-        </div>
 
-        <!-- BOARD: plain, no overlay -->
-        <div class="shrink-0">
-          <ChessBoard
-            ref="board"
+          <PlayBoardPanel
             :orientation="currentLine.userSide"
             :player-color="currentLine.userSide"
-            :coordinates-inside="true"
             @user-move="handleUserMove"
+            @board-ready="onBoardReady"
+          />
+
+          <PlayActionBar
+            :hint-active="flow.hintActive.value"
+            :can-go-backward="replay.canGoBackward.value"
+            :can-go-forward="replay.canGoForward.value"
+            @help="showHelp"
+            @restart="restartLine"
+            @more="showActionSheet = true"
+            @step="replay.goMoveHistory"
           />
         </div>
 
-        <!-- BOTTOM ACTION BAR (takes the place of the nav bar, matches normal nav height) -->
-        <div
-          class="mt-auto border-t border-(--ui-border) bg-(--ui-bg)/95 backdrop-blur"
-          style="padding-bottom: env(safe-area-inset-bottom)"
-          data-testid="play-action-bar"
-        >
-          <div class="flex items-stretch justify-around">
-            <button
-              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-primary) transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-              :disabled="hintActive"
-              aria-label="Hilfe"
-              @click="showHelp"
-            >
-              <UIcon name="i-lucide-lightbulb" class="h-5 w-5" />
-              <span>Hilfe</span>
-            </button>
-            <button
-              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:text-(--ui-text)"
-              :disabled="!canGoBackward"
-              aria-label="Zurück"
-              @click="goMoveHistory(-1)"
-            >
-              <UIcon name="i-lucide-chevron-left" class="h-5 w-5" />
-              <span>Zurück</span>
-            </button>
-            <button
-              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:text-(--ui-text)"
-              :disabled="!canGoForward"
-              aria-label="Vor"
-              @click="goMoveHistory(1)"
-            >
-              <UIcon name="i-lucide-chevron-right" class="h-5 w-5" />
-              <span>Vor</span>
-            </button>
-            <button
-              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
-              aria-label="Neu starten"
-              @click="restartLine"
-            >
-              <UIcon name="i-lucide-rotate-ccw" class="h-5 w-5" />
-              <span>Neustart</span>
-            </button>
-            <button
-              class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
-              aria-label="Mehr"
-              @click="showActionSheet = true"
-            >
-              <UIcon name="i-lucide-ellipsis" class="h-5 w-5" />
-              <span>Mehr</span>
-            </button>
-          </div>
-        </div>
-      </div>
+        <PlayHelpModal
+          v-if="session && currentLine"
+          :open="showInfoModal"
+          :line="currentLine"
+          :state="session.state.value"
+          :last-feedback="session.lastFeedback.value"
+          @update:open="showInfoModal = $event"
+        />
 
-      <UModal v-if="session && currentLine" v-model:open="showInfoModal">
-        <template #content>
-          <div class="p-4 sm:p-5">
-            <h2 class="mb-3 text-lg font-semibold">{{ currentLine.fullName }}</h2>
-            <SessionHud
-              :line="currentLine"
-              :state="session.state.value"
-              :last-feedback="session.lastFeedback.value"
-            />
-          </div>
-        </template>
-      </UModal>
-
-      <UModal v-if="session && currentLine" v-model:open="showActionSheet">
-        <template #content>
-          <div class="p-3">
-            <h2 class="mb-2 text-sm font-semibold text-(--ui-text-muted)">Aktionen</h2>
-            <div class="space-y-1">
-              <UButton
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-rotate-ccw"
-                class="w-full justify-start"
-                @click="restartLine"
-              >
-                Neu starten
-              </UButton>
-              <UButton
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-skip-forward"
-                class="w-full justify-start"
-                @click="skipLine"
-              >
-                Überspringen
-              </UButton>
-              <UButton
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-corner-up-left"
-                :disabled="!topic || !currentLine"
-                data-testid="parent-line-button"
-                class="w-full justify-start"
-                @click="goToPreviousLine"
-              >
-                Vorherige Folge
-              </UButton>
-            </div>
-          </div>
-        </template>
-      </UModal>
+        <PlayActionSheet
+          v-if="session && currentLine"
+          :open="showActionSheet"
+          :can-go-to-previous="!!topic && !!currentLine"
+          @update:open="showActionSheet = $event"
+          @restart="restartLine"
+          @skip="skipLine"
+          @previous="goToPreviousLine"
+        />
+      </template>
     </template>
-  </template>
   </div>
 </template>
 

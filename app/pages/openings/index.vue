@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import BaseErrorAlert from '~/components/base/BaseErrorAlert.vue'
+import BaseLoadingState from '~/components/base/BaseLoadingState.vue'
+import BasePageHeader from '~/components/base/BasePageHeader.vue'
 import { useOpeningsIndex } from '~/composables/useOpeningsIndex'
 import type { TopicSummary } from '~/domain/data/split-dataset'
 
@@ -69,29 +72,19 @@ const masteryFor = (summary: TopicSummary): FamilyMastery =>
 
 <template>
   <div class="mx-auto w-full max-w-5xl px-4 py-6 sm:py-10">
-    <header class="mb-6 flex flex-col gap-2 sm:mb-10">
-      <p class="text-xs uppercase tracking-widest text-(--ui-text-muted)">
-        Eröffnungen
-      </p>
-      <h1 class="text-2xl font-semibold sm:text-4xl">
-        Wähle eine Gruppe
-      </h1>
-      <p class="max-w-2xl text-sm text-(--ui-text-muted) sm:text-base">
-        Tipp auf eine Gruppe, um die Eröffnungen zu sehen und gezielt eine
-        Zugfolge auszuwählen, die du als Nächstes üben möchtest.
-      </p>
-    </header>
-
-    <div v-if="loading && !index" class="text-(--ui-text-muted)">
-      Lade Eröffnungen…
-    </div>
-    <UAlert
-      v-else-if="error"
-      color="error"
-      variant="soft"
-      icon="i-lucide-alert-triangle"
-      :title="error.message"
+    <BasePageHeader
+      eyebrow="Eröffnungen"
+      title="Wähle eine Gruppe"
+      description="Tipp auf eine Gruppe, um die Eröffnungen zu sehen und gezielt eine Zugfolge auszuwählen, die du als Nächstes üben möchtest."
     />
+
+    <BaseLoadingState
+      v-if="loading && !index"
+      variant="skeleton"
+      :skeleton-count="6"
+      message="Lade Eröffnungen…"
+    />
+    <BaseErrorAlert v-else-if="error" :message="error.message" />
     <div
       v-else
       class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
@@ -103,7 +96,7 @@ const masteryFor = (summary: TopicSummary): FamilyMastery =>
         class="block focus:outline-none"
       >
         <UCard
-          class="h-full transition active:scale-[0.99] sm:hover:-translate-y-0.5 sm:hover:shadow-lg"
+          class="h-full transition active:scale-[0.99] sm:hover:-translate-y-0.5 sm:hover:shadow-md"
           :ui="{ root: 'h-full' }"
         >
           <template #header>
