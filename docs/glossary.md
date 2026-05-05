@@ -34,7 +34,7 @@ A legacy **name tree** built from parsed `fullName` was a separate idea and is *
 | **Intro (phase)** | The user **plays the prefix** by hand (when applicable) to reach the line’s start for drilling, unless **parent-prefix autoplay** is on. |
 | **Autoplay (parent-prefix)** | Profile setting: **replays the mastered parent prefix** (known setup from a parent line) instead of the intro, on session start and resets. Refers to **replaying setup you have already qualified**—not the opponent’s automatic moves in the live loop. |
 | **Opponent auto-reply** | When the next expected move is the opponent’s, the app **plays that SAN** (after a short delay), possibly several plies in a row until the **user** must move. Distinct from **parent-prefix autoplay**. |
-| **Training phase** | Phase in which the line is first **walked** move-by-move (session builds the line from `sanMoves` in order), as opposed to only cycling **repetitions**. |
+| **Building phase** | Phase (`'building'`) in which the line is first **walked** move-by-move (session builds the line from `sanMoves` in order), as opposed to only cycling **repetitions**. UI label: **Aufbau**. |
 | **Repetition phase** | Part of the session where the line (or its steps) is practiced in a **repetition** loop: reps, resets, and completion criteria, after the intro and training work as needed. |
 | **Progress** | Per-line **new** / **in progress** / **mastered** (and **reps**), stored for spaced practice. |
 | **Reps** | Count of **repetitions** recorded for a line. |

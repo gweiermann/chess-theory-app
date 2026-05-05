@@ -6,10 +6,9 @@ import type { Side } from '~/domain/types'
 interface Props {
   orientation: Side
   playerColor: Side
-  coordinatesInside?: boolean
 }
 
-withDefaults(defineProps<Props>(), { coordinatesInside: true })
+defineProps<Props>()
 
 const emit = defineEmits<{
   (e: 'userMove', san: string): void
@@ -29,7 +28,6 @@ watch(board, (next) => emit('boardReady', next), { immediate: true })
       ref="board"
       :orientation="orientation"
       :player-color="playerColor"
-      :coordinates-inside="coordinatesInside"
       @user-move="emit('userMove', $event)"
     />
   </div>

@@ -9,14 +9,12 @@ interface Props {
   orientation?: Side
   playerColor?: Side
   autoOpponentDelayMs?: number
-  coordinatesInside?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   orientation: 'white',
   playerColor: 'white',
   autoOpponentDelayMs: 350,
-  coordinatesInside: false,
 })
 
 const emit = defineEmits<{
@@ -27,6 +25,7 @@ const emit = defineEmits<{
 const apiRef = ref<BoardApi | null>(null)
 const pendingTimeouts = new Set<ReturnType<typeof setTimeout>>()
 let suppressEmitForSan: string | null = null
+
 const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
 const ranks = ['1', '2', '3', '4', '5', '6', '7', '8'] as const
 const fileLabels = computed(() =>
@@ -49,8 +48,8 @@ const rankLabels = computed(() =>
 const boardConfig = {
   orientation: props.orientation,
   movable: { color: props.playerColor as Side | undefined },
-  animation: { enabled: true, duration: 200 },
-  coordinates: props.coordinatesInside,
+  animation: { enabled: false, duration: 0 },
+  coordinates: false,
 }
 
 const handleBoardCreated = (api: BoardApi): void => {
@@ -104,12 +103,6 @@ const setLocked = (locked: boolean): void => {
 
 const undoLastMove = (): void => {
   apiRef.value?.undoLastMove()
-}
-
-const setAnimationEnabled = (enabled: boolean): void => {
-  const cfg = { enabled, duration: enabled ? 200 : 0 }
-  boardConfig.animation = cfg
-  apiRef.value?.setConfig({ animation: cfg })
 }
 
 const resolveSanToSquares = (
@@ -179,7 +172,6 @@ defineExpose({
   drawHintForSan,
   clearHints,
   refreshBounds,
-  setAnimationEnabled,
 })
 
 watch(
@@ -210,21 +202,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="chessboard-shell" :class="{ 'coordinates-inside': coordinatesInside }">
+  <div class="chessboard-shell">
     <TheChessboard
       :board-config="boardConfig"
       :player-color="playerColor"
       @board-created="handleBoardCreated"
       @move="handleMove"
     />
-    <template v-if="!coordinatesInside">
-      <div class="files-overlay" aria-hidden="true">
-        <span v-for="file in fileLabels" :key="file">{{ file.toUpperCase() }}</span>
-      </div>
-      <div class="ranks-overlay" aria-hidden="true">
-        <span v-for="rank in rankLabels" :key="rank">{{ rank }}</span>
-      </div>
-    </template>
+    <div class="files-overlay" aria-hidden="true">
+      <span v-for="file in fileLabels" :key="file">{{ file.toUpperCase() }}</span>
+    </div>
+    <div class="ranks-overlay" aria-hidden="true">
+      <span v-for="rank in rankLabels" :key="rank">{{ rank }}</span>
+    </div>
   </div>
 </template>
 
@@ -235,14 +225,8 @@ onBeforeUnmount(() => {
   max-width: 560px;
   aspect-ratio: 1 / 1;
   margin-inline: auto;
-  padding-left: 16px;
+  padding-right: 16px;
   padding-bottom: 16px;
-}
-
-.chessboard-shell.coordinates-inside {
-  padding-left: 0;
-  padding-bottom: 0;
-  max-width: 560px;
 }
 
 /*
@@ -267,7 +251,7 @@ onBeforeUnmount(() => {
 
 .files-overlay {
   position: absolute;
-  inset-inline: 18px 2px;
+  inset-inline: 2px 18px;
   inset-block-end: 0;
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -280,7 +264,7 @@ onBeforeUnmount(() => {
 
 .ranks-overlay {
   position: absolute;
-  inset-inline-start: 0;
+  inset-inline-end: 0;
   inset-block: 2px 18px;
   display: grid;
   grid-template-rows: repeat(8, minmax(0, 1fr));

@@ -4,7 +4,7 @@ import PlayBoardPanel from './PlayBoardPanel.vue'
 const meta: Meta<typeof PlayBoardPanel> = {
   title: 'Play/PlayBoardPanel',
   component: PlayBoardPanel,
-  args: { orientation: 'white', playerColor: 'white', coordinatesInside: true },
+  args: { orientation: 'white', playerColor: 'white' },
   argTypes: {
     orientation: { control: 'inline-radio', options: ['white', 'black'] },
     playerColor: { control: 'inline-radio', options: ['white', 'black'] },

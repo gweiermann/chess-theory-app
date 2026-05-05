@@ -94,12 +94,10 @@ export const useLineLifecycle = ({
     flow.setBoardLocked(true)
 
     setTimeout(async () => {
-      board.value?.setAnimationEnabled(false)
       board.value?.reset()
       if (skipIntro && prefixPlies > 0) {
-        await flow.replayPrefixOntoBoard(true)
+        flow.replayPrefixOntoBoard()
       }
-      board.value?.setAnimationEnabled(true)
       await flow.playOpponentIfNeeded()
       flow.showHintIfNewStep()
       flow.setBoardLocked(false)

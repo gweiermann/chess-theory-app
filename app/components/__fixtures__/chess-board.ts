@@ -11,12 +11,8 @@ export const ITALIAN_GAME_OPENING: ReadonlyArray<string> = [
   'Nf6',
 ]
 
-export const playMoves = async (
-  api: BoardApi,
-  moves: ReadonlyArray<string>,
-): Promise<void> => {
+export const playMoves = (api: BoardApi, moves: ReadonlyArray<string>): void => {
   for (const san of moves) {
     api.move(san)
-    await new Promise((resolve) => setTimeout(resolve, 60))
   }
 }

@@ -18,7 +18,6 @@ interface UseSessionFlowArgs {
   isReplayMode: ComputedRef<boolean>
   resetReplayView: () => void
   opponentDelayMs?: number
-  prefixReplayDelayMs?: number
 }
 
 export interface UseSessionFlow {
@@ -30,7 +29,7 @@ export interface UseSessionFlow {
   showHintIfNewStep: () => void
   playOpponentIfNeeded: () => Promise<void>
   resetBoardForNextAttempt: () => Promise<void>
-  replayPrefixOntoBoard: (instant?: boolean) => Promise<void>
+  replayPrefixOntoBoard: () => void
   rehydrateBoardFromSession: () => Promise<void>
   /** True while an opponent move is being submitted; user-moves should be buffered. */
   isOpponentInFlight: () => boolean
@@ -55,7 +54,6 @@ export const useSessionFlow = ({
   isReplayMode,
   resetReplayView,
   opponentDelayMs = 350,
-  prefixReplayDelayMs = 120,
 }: UseSessionFlowArgs): UseSessionFlow => {
   const hintActive = ref(false)
   const isResetting = ref(false)
@@ -151,7 +149,7 @@ export const useSessionFlow = ({
    * intro – the user should never have to replay the parent by hand during
    * a drill loop. Used at session start only when `skipIntro` is on.
    */
-  const replayPrefixOntoBoard = async (instant = false): Promise<void> => {
+  const replayPrefixOntoBoard = (): void => {
     const line = currentLine.value
     const s = session.value
     if (!line || !s) return
@@ -161,20 +159,15 @@ export const useSessionFlow = ({
       const san = line.sanMoves[i]
       if (!san) break
       board.value?.playOpponentSan(san)
-      if (!instant && i < prefix - 1) {
-        await new Promise((r) => setTimeout(r, prefixReplayDelayMs))
-      }
     }
   }
 
   const resetBoardForNextAttempt = async (): Promise<void> => {
     isResetting.value = true
     clearHintArrow()
-    board.value?.setAnimationEnabled(false)
     board.value?.reset()
     await nextTick()
-    await replayPrefixOntoBoard(true)
-    board.value?.setAnimationEnabled(true)
+    replayPrefixOntoBoard()
     isResetting.value = false
     await playOpponentIfNeeded()
     showHintIfNewStep()
@@ -195,7 +188,6 @@ export const useSessionFlow = ({
     setBoardLocked(true)
     await nextTick()
     await new Promise((r) => setTimeout(r, 50))
-    board.value?.setAnimationEnabled(false)
     board.value?.reset()
     await nextTick()
     const idx = s.state.value.expectedMoveIndex
@@ -205,7 +197,6 @@ export const useSessionFlow = ({
       board.value?.playOpponentSan(san)
     }
     await nextTick()
-    board.value?.setAnimationEnabled(true)
     if (
       isNewStepMove(s.state.value)
       && !demonstratedSteps.value.has(s.state.value.currentStep)

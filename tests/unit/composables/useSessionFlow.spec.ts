@@ -160,7 +160,7 @@ describe('useSessionFlow', () => {
       isReplayMode: computed(() => false),
       resetReplayView: () => {},
     })
-    await flow.replayPrefixOntoBoard(true)
+    flow.replayPrefixOntoBoard()
     expect(playOpponentSan).toHaveBeenCalledTimes(2)
     expect(playOpponentSan).toHaveBeenNthCalledWith(1, 'e4')
     expect(playOpponentSan).toHaveBeenNthCalledWith(2, 'e5')
@@ -177,7 +177,7 @@ describe('useSessionFlow', () => {
       isReplayMode: computed(() => false),
       resetReplayView: () => {},
     })
-    await flow.replayPrefixOntoBoard()
+    flow.replayPrefixOntoBoard()
     expect(playOpponentSan).not.toHaveBeenCalled()
   })
 
