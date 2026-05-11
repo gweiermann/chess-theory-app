@@ -99,7 +99,7 @@ export const useLineLifecycle = ({
         flow.replayPrefixOntoBoard()
       }
       await flow.playOpponentIfNeeded()
-      flow.showHintIfNewStep()
+      flow.showBuildingUserHint()
       flow.setBoardLocked(false)
     }, 50)
   }

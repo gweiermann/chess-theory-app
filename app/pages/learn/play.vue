@@ -15,6 +15,7 @@ import {
   getResetReason,
   isNewStepMove,
   type PhaseMarkers,
+  type ResetReason,
 } from '~/domain/session'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
 import PlayEmptyState from '~/components/play/PlayEmptyState.vue'
@@ -112,6 +113,9 @@ const markers = (): PhaseMarkers | null => {
     repsDone: st.repsDone,
   }
 }
+
+const needsPhysicalBoardReset = (reason: ResetReason | null): boolean =>
+  reason !== null && reason !== 'next-step'
 
 const onBoardReady = (instance: InstanceType<typeof ChessBoardComponent> | null): void => {
   board.value = instance
@@ -219,7 +223,7 @@ const processUserMove = async (san: string): Promise<void> => {
   }
 
   const reasonAfterUser = getResetReason(before, afterUser)
-  if (reasonAfterUser !== null) {
+  if (needsPhysicalBoardReset(reasonAfterUser)) {
     flow.setBoardLocked(true)
     setTimeout(() => flow.resetBoardForNextAttempt(), STEP_RESET_DELAY_MS)
     return
@@ -246,13 +250,13 @@ const processUserMove = async (san: string): Promise<void> => {
   }
 
   const reasonAfterOpponent = getResetReason(before, afterOpponent)
-  if (reasonAfterOpponent !== null) {
+  if (needsPhysicalBoardReset(reasonAfterOpponent)) {
     flow.setBoardLocked(true)
     setTimeout(() => flow.resetBoardForNextAttempt(), STEP_RESET_DELAY_MS)
     return
   }
 
-  flow.showHintIfNewStep()
+  flow.showBuildingUserHint()
 }
 
 const showHelp = (): void => {

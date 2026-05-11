@@ -397,7 +397,7 @@ test.skip('undo enables after first user move with autoplay', async ({ familyTre
   let g = san1 === 'Nf3' ? mirrorItalianAfterE5() : initItalianAutoplayGame()
   await playSanFromUi(page, learnPlay, g, 'white', san1)
   const san2 = await learnPlay.readNextSanFromUi()
-  // Building phase can replay 1.e4 from the start position on the next step; chess.js must match a board reset.
+  // Continuous Aufbau: the next SAN is forward in the line (not a rewind duplicate of Schritt 1).
   if (san1 === 'e4' && san2 === 'e4') g = initItalianAutoplayGame()
   await playSanFromUi(page, learnPlay, g, 'white', san2)
   await expect(learnPlay.actionBar().getByRole('button', { name: 'Zurück' })).toBeEnabled({ timeout: E2E_MAX_WAIT_MS })

@@ -1,7 +1,7 @@
 import { nextTick, ref, type ComputedRef, type Ref } from 'vue'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
 import type { TrainingSession } from '~/composables/training-session'
-import { isNewStepMove, willMoveTriggerReset } from '~/domain/session'
+import { willMoveTriggerReset } from '~/domain/session'
 import { isOpponentPly } from '~/domain/training-turn'
 import type { Line } from '~/domain/types'
 
@@ -26,6 +26,9 @@ export interface UseSessionFlow {
   setBoardLocked: (locked: boolean) => void
   clearHintArrow: () => void
   showHintForExpected: () => boolean
+  /** Aufbau (`building`): auto-draw hint before every expected user move. Intro unchanged (no auto hints). */
+  showBuildingUserHint: () => void
+  /** @deprecated Use {@link showBuildingUserHint}; kept for callers that relied on this name. */
   showHintIfNewStep: () => void
   playOpponentIfNeeded: () => Promise<void>
   resetBoardForNextAttempt: () => Promise<void>
@@ -48,7 +51,7 @@ export interface UseSessionFlow {
 export const useSessionFlow = ({
   session,
   currentLine,
-  demonstratedSteps,
+  demonstratedSteps: _demonstratedSteps,
   board,
   flowLocked,
   isReplayMode,
@@ -81,12 +84,20 @@ export const useSessionFlow = ({
     return ok
   }
 
-  const showHintIfNewStep = (): void => {
+  const showBuildingUserHint = (): void => {
     const s = session.value
-    if (!s) return
-    if (!isNewStepMove(s.state.value)) return
-    if (demonstratedSteps.value.has(s.state.value.currentStep)) return
+    const line = currentLine.value
+    if (!s || !line) return
+    const st = s.state.value
+    if (st.phase !== 'building') return
+    const san = st.expectedSan
+    if (!san) return
+    if (isOpponentPly(line, st.expectedMoveIndex)) return
     showHintForExpected()
+  }
+
+  const showHintIfNewStep = (): void => {
+    showBuildingUserHint()
   }
 
   const playOpponentIfNeeded = async (): Promise<void> => {
@@ -170,7 +181,7 @@ export const useSessionFlow = ({
     replayPrefixOntoBoard()
     isResetting.value = false
     await playOpponentIfNeeded()
-    showHintIfNewStep()
+    showBuildingUserHint()
     setBoardLocked(false)
   }
 
@@ -197,12 +208,7 @@ export const useSessionFlow = ({
       board.value?.playOpponentSan(san)
     }
     await nextTick()
-    if (
-      isNewStepMove(s.state.value)
-      && !demonstratedSteps.value.has(s.state.value.currentStep)
-    ) {
-      showHintForExpected()
-    }
+    showBuildingUserHint()
     setBoardLocked(false)
   }
 
@@ -224,6 +230,7 @@ export const useSessionFlow = ({
     setBoardLocked,
     clearHintArrow,
     showHintForExpected,
+    showBuildingUserHint,
     showHintIfNewStep,
     playOpponentIfNeeded,
     resetBoardForNextAttempt,

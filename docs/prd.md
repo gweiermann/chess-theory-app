@@ -208,17 +208,17 @@ This subsection is the **authoritative UX spec** for the drill screen (implement
 
 **When the full board resets** (physical reset + prefix replay + opponent chain)
 
-A reset runs when a **phase-marker transition** matches one of these **reset reasons** (pure logic in `getResetReason`):
+A reset runs when a **phase-marker transition** matches one of these **reset reasons** (pure logic in `getResetReason`), **and** the UI treats the reason as requiring a **physical** board reset (clear board, prefix replay, opponent chain). The marker `next-step` (`building` → `building` with higher `currentStep`) is still computed for continuity with the domain but **does not** trigger a physical reset: Aufbau walks the line forward with an auto hint before each expected user move (see `showBuildingUserHint` / `useSessionFlow`).
 
-| Reset reason | Transition (before → after) |
-|--------------|-----------------------------|
-| `intro-complete` | `intro` → `building` |
-| `to-repeating` | `building` → `repeating` |
-| `next-step` | `building` → `building` with **higher** `currentStep` |
-| `next-rep` | `repeating` → `repeating` with **higher** `repsDone` |
+| Reset reason | Transition (before → after) | Physical board reset (§4.4.1) |
+|--------------|-----------------------------|-------------------------------|
+| `intro-complete` | `intro` → `building` | **Yes** |
+| `to-repeating` | `building` → `repeating` | **Yes** |
+| `next-step` | `building` → `building` with **higher** `currentStep` | **No** (continuous Aufbau) |
+| `next-rep` | `repeating` → `repeating` with **higher** `repsDone` | **Yes** |
 
 - Entering **`done`** is handled separately (mastery finalize, delay, then **next line**); it is **not** a row in this reset-reason banner table.
-- After a user move that triggers a reset reason, the UI waits **600 ms** (`STEP_RESET_DELAY_MS`) before running the reset sequence so the user perceives the boundary.
+- After a user move that triggers a **physical** reset (rows marked **Yes**), the UI waits **600 ms** (`STEP_RESET_DELAY_MS`) before running the reset sequence so the user perceives the boundary.
 
 **Banner copy after a reset** (`bannerForResetReason`)
 
@@ -228,13 +228,14 @@ A reset runs when a **phase-marker transition** matches one of these **reset rea
 | `to-repeating` | `setup-complete` | `Aufbau geschafft – {TARGET_REPS}× auswendig` (with `TARGET_REPS` = **5**) |
 | `next-rep` | `motivation` **only** when `repsDone === floor(TARGET_REPS / 2)` | `Halbzeit – weiter so! ({repsDone}/{TARGET_REPS})` |
 | `next-rep` (otherwise) | `memory` | `Durchgang {repsDone+1}/{TARGET_REPS} · auswendig` |
-| `next-step` | `memory` | `Spiele {N} Zug|Züge aus dem Gedächtnis` (N = `max(after.currentStep - 1, 1)`; word form pluralizes) |
+
+Historical / optional: `next-step` was previously tied to a physical reset and a “play N moves from memory” banner; **continuous Aufbau** no longer resets the board on step advance, so this row is not used for a reset-driven banner in normal play.
 
 **Precedence:** On the rep where the **halftime** motivation applies, the **motivation** banner **wins** over the default **memory** banner for that same reset (single visible nudge).
 
 **Other banners (not tied to `getResetReason`)**
 
-- **New step hint:** `hint` banner, typically `Neuer Zug – probiere ihn aus: <SAN>` when demonstrating a move the user has not yet played in this session; paired with on-board hint drawing until cleared.
+- **Aufbau (building):** automatic on-board hint arrow (`showBuildingUserHint`) before each expected **user** move in the building phase; cleared on the next correct user move or Help flow. Intro phase unchanged (no auto hints unless implemented separately).
 - **Help (Hilfe):** `hint` with help copy including expected SAN.
 - **Intro / parent reminder:** additional `hint` / copy paths as implemented on the learn page (e.g. intro banner text referencing the parent line).
 
@@ -250,7 +251,7 @@ A reset runs when a **phase-marker transition** matches one of these **reset rea
 
 **Premove / lock interaction with reset**
 
-- If the next **opponent** move would cross a reset boundary, the board locks so **premove cannot queue** a move that would be discarded; after the opponent ply is applied, reset logic runs as usual (`willMoveTriggerReset`).
+- If the next **opponent** move would cross a **physical** reset boundary (`willMoveTriggerReset`), the board locks so **premove cannot queue** a move that would be discarded; after the opponent ply is applied, reset logic runs as usual. `next-step` is excluded from `willMoveTriggerReset` so mid–Aufbau opponent replies do not lock for a non-resetting step advance.
 
 ---
 

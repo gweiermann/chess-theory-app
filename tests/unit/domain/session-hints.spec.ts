@@ -35,18 +35,15 @@ describe('isNewStepMove', () => {
   })
 
   it('returns false when the next expected move is an opponent move', () => {
-    // Reach step 2: replay from start; after e4 we expect opponent e5 at idx 1.
     let state = startSession(lineWhite)
     state = playAll(state, ['e4'])
     expect(state.currentStep).toBe(2)
-    state = playAll(state, ['e4'])
     expect(state.expectedMoveIndex).toBe(1)
     expect(isNewStepMove(state)).toBe(false)
   })
 
   it("returns true when the position reaches step 2's new user move", () => {
     let state = startSession(lineWhite)
-    state = playAll(state, ['e4'])
     state = playAll(state, ['e4', 'e5'])
     expect(state.currentStep).toBe(2)
     expect(state.expectedMoveIndex).toBe(2)
@@ -55,8 +52,6 @@ describe('isNewStepMove', () => {
 
   it('returns false during the repeating phase', () => {
     let state = startSession(lineWhite)
-    state = playAll(state, ['e4'])
-    state = playAll(state, ['e4', 'e5', 'Nf3'])
     state = playAll(state, ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6'])
     expect(state.phase).toBe('repeating')
     expect(isNewStepMove(state)).toBe(false)

@@ -3,6 +3,7 @@ import {
   startSession,
   submitMove,
   TARGET_REPS,
+  willMoveTriggerReset,
   type SessionState,
 } from '~/domain/session'
 import type { Line } from '~/domain/types'
@@ -35,32 +36,30 @@ describe('session reducer', () => {
     expect(state.repsDone).toBe(0)
   })
 
-  it('finishes step 1 after just the first user move', () => {
+  it('finishes step 1 after just the first user move and advances the cursor forward', () => {
     const state = startSession(italianGame)
     const next = submitMove(state, 'e4').state
 
     expect(next.currentStep).toBe(2)
-    expect(next.expectedMoveIndex).toBe(0)
-    expect(next.expectedSan).toBe('e4')
+    expect(next.expectedMoveIndex).toBe(1)
+    expect(next.expectedSan).toBe('e5')
   })
 
-  it('within step 2, advances ply by ply for opponent and user moves', () => {
+  it('within step 2, advances ply by ply for opponent and user moves without rewinding', () => {
     let state = startSession(italianGame)
     state = submitMove(state, 'e4').state
 
-    state = submitMove(state, 'e4').state
-    expect(state.expectedSan).toBe('e5')
     state = submitMove(state, 'e5').state
     expect(state.expectedSan).toBe('Nf3')
     state = submitMove(state, 'Nf3').state
 
     expect(state.currentStep).toBe(3)
-    expect(state.expectedMoveIndex).toBe(0)
+    expect(state.expectedMoveIndex).toBe(3)
+    expect(state.expectedSan).toBe('Nc6')
   })
 
   it('reports wrong on a mismatched move and keeps progress (lenient)', () => {
     let state = startSession(italianGame)
-    state = submitMove(state, 'e4').state
     state = submitMove(state, 'e4').state
 
     const before = state.expectedMoveIndex
@@ -73,10 +72,6 @@ describe('session reducer', () => {
 
   it('switches to repeating after completing the last build-up step', () => {
     let state = startSession(italianGame)
-    state = submitMove(state, 'e4').state
-
-    state = playLine(state, italianGame)
-
     state = playLine(state, italianGame)
 
     expect(state.phase).toBe('repeating')
@@ -113,16 +108,35 @@ describe('session reducer', () => {
     expect(wrong.state.repsDone).toBe(1)
   })
 
+  it('willMoveTriggerReset is false when a building-phase move only advances Aufbau Schritt', () => {
+    const state = startSession(italianGame)
+    expect(willMoveTriggerReset(state, 'e4')).toBe(false)
+  })
+
+  it('willMoveTriggerReset is true when building finishes and enters repeating', () => {
+    let state = startSession(italianGame)
+    state = playMoves(state, ['e4', 'e5', 'Nf3', 'Nc6'])
+    expect(willMoveTriggerReset(state, 'Bc4')).toBe(true)
+  })
+
+  it('willMoveTriggerReset is true when a repetition round completes', () => {
+    let state = startSession(italianGame)
+    while (state.phase === 'building') state = playLine(state, italianGame)
+    expect(state.phase).toBe('repeating')
+    state = playMoves(state, ['e4', 'e5', 'Nf3', 'Nc6'])
+    expect(willMoveTriggerReset(state, 'Bc4')).toBe(true)
+  })
+
   it('exposes the next expected move after each correct submission', () => {
     let state = startSession(italianGame)
     expect(state.expectedSan).toBe('e4')
 
     state = submitMove(state, 'e4').state
     expect(state.currentStep).toBe(2)
-    expect(state.expectedSan).toBe('e4')
-
-    state = submitMove(state, 'e4').state
     expect(state.expectedSan).toBe('e5')
+
+    state = submitMove(state, 'e5').state
+    expect(state.expectedSan).toBe('Nf3')
   })
 })
 
@@ -156,6 +170,12 @@ describe('session with a parent prefix', () => {
     expect(state.currentStep).toBe(1)
     expect(state.expectedMoveIndex).toBe(5)
     expect(state.expectedSan).toBe('Bc5')
+  })
+
+  it('willMoveTriggerReset is true when intro completes into building', () => {
+    let state = startSession(giuocoPiano, 5)
+    state = playMoves(state, ['e4', 'e5', 'Nf3', 'Nc6'])
+    expect(willMoveTriggerReset(state, 'Bc4')).toBe(true)
   })
 
   it('rejects a wrong intro move without advancing the cursor', () => {

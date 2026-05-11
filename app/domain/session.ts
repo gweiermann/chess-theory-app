@@ -182,7 +182,7 @@ export const submitMove = (
         result: 'correct',
         state: cloneWith(state, {
           currentStep: state.currentStep + 1,
-          expectedMoveIndex: state.prefixPlies,
+          expectedMoveIndex: nextIndex,
         }),
       }
     }
@@ -300,5 +300,6 @@ export const willMoveTriggerReset = (state: SessionState, san: string): boolean 
     currentStep: predicted.state.currentStep,
     repsDone: predicted.state.repsDone,
   }
-  return getResetReason(before, after) !== null
+  const reason = getResetReason(before, after)
+  return reason !== null && reason !== 'next-step'
 }
