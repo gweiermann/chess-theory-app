@@ -50,10 +50,13 @@ const emitBoardInteraction = (): void => {
   emit('board-interaction')
 }
 
+/** Chessground animates plies when duration >= 70ms; below that it forces animation off. */
+const MOVE_ANIMATION_DURATION_MS = 220
+
 const boardConfig = {
   orientation: props.orientation,
   movable: { color: props.playerColor as Side | undefined },
-  animation: { enabled: false, duration: 0 },
+  animation: { enabled: true, duration: MOVE_ANIMATION_DURATION_MS },
   coordinates: false,
   events: {
     /** Piece/square taps: chessground often clears drawable shapes before we hear about moves. */
@@ -88,6 +91,24 @@ const playOpponentSan = (san: string): boolean => {
   const ok = api.move(san)
   if (!ok) suppressEmitForSan = null
   return ok
+}
+
+/**
+ * Toggle smooth piece motion for programmatic moves. Keep enabled for live
+ * opponent replies; disable during replay prev/next and when replaying many
+ * plies at once so the board snaps instantly.
+ */
+const setMoveAnimationEnabled = (enabled: boolean): void => {
+  boardConfig.animation = {
+    enabled,
+    duration: enabled ? MOVE_ANIMATION_DURATION_MS : 0,
+  }
+  apiRef.value?.setConfig({
+    animation: {
+      enabled,
+      duration: enabled ? MOVE_ANIMATION_DURATION_MS : 0,
+    },
+  })
 }
 
 const reset = (): void => {
@@ -184,6 +205,7 @@ defineExpose({
   reset,
   setPlayerColor,
   setLocked,
+  setMoveAnimationEnabled,
   undoLastMove,
   drawHintForSan,
   clearHints,

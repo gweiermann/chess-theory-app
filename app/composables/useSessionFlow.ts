@@ -181,9 +181,14 @@ export const useSessionFlow = ({
   const resetBoardForNextAttempt = async (): Promise<void> => {
     isResetting.value = true
     clearHintArrow()
-    board.value?.reset()
-    await nextTick()
-    replayPrefixOntoBoard()
+    board.value?.setMoveAnimationEnabled(false)
+    try {
+      board.value?.reset()
+      await nextTick()
+      replayPrefixOntoBoard()
+    } finally {
+      board.value?.setMoveAnimationEnabled(true)
+    }
     isResetting.value = false
     await playOpponentIfNeeded()
     showBuildingUserHint()
@@ -202,18 +207,23 @@ export const useSessionFlow = ({
     if (!line || !s) return
     resetReplayView()
     setBoardLocked(true)
-    await nextTick()
-    await new Promise((r) => setTimeout(r, 50))
-    board.value?.reset()
-    await nextTick()
-    const idx = s.state.value.expectedMoveIndex
-    for (let i = 0; i < idx; i += 1) {
-      const san = line.sanMoves[i]
-      if (!san) break
-      board.value?.playOpponentSan(san)
+    board.value?.setMoveAnimationEnabled(false)
+    try {
+      await nextTick()
+      await new Promise((r) => setTimeout(r, 50))
+      board.value?.reset()
+      await nextTick()
+      const idx = s.state.value.expectedMoveIndex
+      for (let i = 0; i < idx; i += 1) {
+        const san = line.sanMoves[i]
+        if (!san) break
+        board.value?.playOpponentSan(san)
+      }
+      await nextTick()
+      showBuildingUserHint()
+    } finally {
+      board.value?.setMoveAnimationEnabled(true)
     }
-    await nextTick()
-    showBuildingUserHint()
     setBoardLocked(false)
   }
 

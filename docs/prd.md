@@ -158,7 +158,7 @@ Short sessions on phone; bottom navigation; leaves mid-line.
 - **D5.** Line title shows **variation part** after first colon in `fullName` when present (family context already in header).
 - **D6.** Phase strip shows **phase label** (Einführung, Aufbau step k/n, Wiederholung rep k/5, Fertig) and the **banner slot**; banner kinds, copy, and lifecycle are specified in **§4.4.1**.
 - **D7.** Board: orientation and player color follow **`userSide`**; coordinates inside board.
-- **D8.** Opponent plies: app **auto-plays** opponent SAN after short delay; may chain until user to move.
+- **D8.** Opponent plies: app **auto-plays** opponent SAN after short delay with **smooth on-board animation**; may chain until user to move.
 - **D9.** **Premove / reset safety:** When opponent move crosses a reset boundary, board locks to avoid illegal premove races; premoves flush correctly after opponent move.
 
 **Requirements — phases (see glossary)**
@@ -171,7 +171,7 @@ Short sessions on phone; bottom navigation; leaves mid-line.
 **Requirements — bottom action bar**
 
 - **D14.** **Hilfe:** shows expected move hint on board + banner (counts as help in analytics/progress where applicable).
-- **D15.** **Zurück / Vor:** replay within current built position; disables appropriately; locks input while replaying “behind” live expected index.
+- **D15.** **Zurück / Vor:** replay within current built position; disables appropriately; locks input while replaying “behind” live expected index; stepping applies plies **instantly** (no move animation).
 - **D16.** **Neu starten:** restarts current line flow.
 - **D17.** **Mehr:** additional actions (e.g. info modal—see code for exact menu).
 
@@ -247,7 +247,7 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 | Delay before board reset after boundary | 600 ms | Beat between last move and snap-back. |
 | Delay before advancing to **next line** after mastery | 1500 ms | Breathing room before new line session. |
 | Mistake banner visible | 1800 ms | Auto-dismiss mistake feedback. |
-| Parent-prefix replay between plies (non-instant) | 120 ms | Stagger when replaying prefix moves onto the board. |
+| Parent-prefix replay on board | instant | Prefix SANs snap into place without move animation (see D8 vs D15). |
 
 **Premove / lock interaction with reset**
 

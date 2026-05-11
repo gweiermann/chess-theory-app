@@ -94,9 +94,14 @@ export const useLineLifecycle = ({
     flow.setBoardLocked(true)
 
     setTimeout(async () => {
-      board.value?.reset()
-      if (skipIntro && prefixPlies > 0) {
-        flow.replayPrefixOntoBoard()
+      board.value?.setMoveAnimationEnabled(false)
+      try {
+        board.value?.reset()
+        if (skipIntro && prefixPlies > 0) {
+          flow.replayPrefixOntoBoard()
+        }
+      } finally {
+        board.value?.setMoveAnimationEnabled(true)
       }
       await flow.playOpponentIfNeeded()
       flow.showBuildingUserHint()

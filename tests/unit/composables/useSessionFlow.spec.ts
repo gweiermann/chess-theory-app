@@ -19,16 +19,16 @@ const buildBoardStub = () => {
   const clearHints = vi.fn()
   const playOpponentSan = vi.fn(() => true)
   const reset = vi.fn()
-  const setAnimationEnabled = vi.fn()
+  const setMoveAnimationEnabled = vi.fn()
   const board = shallowRef({
     setLocked,
     drawHintForSan,
     clearHints,
     playOpponentSan,
     reset,
-    setAnimationEnabled,
+    setMoveAnimationEnabled,
   } as unknown as InstanceType<typeof import('~/components/ChessBoard.vue')['default']>)
-  return { board, setLocked, drawHintForSan, clearHints, playOpponentSan, reset, setAnimationEnabled }
+  return { board, setLocked, drawHintForSan, clearHints, playOpponentSan, reset, setMoveAnimationEnabled }
 }
 
 const buildSession = (overrides: Partial<{
@@ -205,6 +205,32 @@ describe('useSessionFlow', () => {
     })
     flow.replayPrefixOntoBoard()
     expect(playOpponentSan).not.toHaveBeenCalled()
+  })
+
+  it('resetBoardForNextAttempt disables move animation around reset and prefix replay', async () => {
+    const { board, reset, playOpponentSan, setMoveAnimationEnabled } = buildBoardStub()
+    const flow = useSessionFlow({
+      session: shallowRef(
+        buildSession({
+          prefixPlies: 2,
+          expectedMoveIndex: 2,
+          lineSanMoves: ['e4', 'e5', 'Nf3'],
+        }),
+      ),
+      currentLine: ref(buildLine(['e4', 'e5', 'Nf3'])),
+      demonstratedSteps: ref(new Set()),
+      board,
+      flowLocked: ref(false),
+      isReplayMode: computed(() => false),
+      resetReplayView: () => {},
+      opponentDelayMs: 0,
+    })
+    await flow.resetBoardForNextAttempt()
+    expect(setMoveAnimationEnabled).toHaveBeenNthCalledWith(1, false)
+    expect(reset).toHaveBeenCalledTimes(1)
+    expect(playOpponentSan).toHaveBeenNthCalledWith(1, 'e4')
+    expect(playOpponentSan).toHaveBeenNthCalledWith(2, 'e5')
+    expect(setMoveAnimationEnabled).toHaveBeenLastCalledWith(true)
   })
 
   it('isOpponentInFlight is false at rest', () => {

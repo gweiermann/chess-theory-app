@@ -29,9 +29,8 @@ export interface UseReplayControls {
  * Step the chessboard one ply forward or backward through the CURRENT
  * game's move history (replaying or undoing the SAN that was actually
  * played), bounded by the live position so we never reveal unlearned
- * moves. We animate backward via `undoLastMove` so the pieces visually
- * return to their previous squares – just replaying forward to ply-1
- * would animate the SECOND-TO-LAST move and look like a forward motion.
+ * moves. Piece motion is turned off for these steps so prev/next snaps
+ * instantly; live opponent plies animate on the board separately.
  */
 export const useReplayControls = ({
   session,
@@ -61,22 +60,27 @@ export const useReplayControls = ({
     const line = currentLine.value
     if (!line) return
 
-    if (next < current) {
-      for (let i = 0; i < current - next; i += 1) {
-        board.value?.undoLastMove()
-        await nextTick()
+    board.value?.setMoveAnimationEnabled(false)
+    try {
+      if (next < current) {
+        for (let i = 0; i < current - next; i += 1) {
+          board.value?.undoLastMove()
+          await nextTick()
+        }
+      } else {
+        for (let i = current; i < next; i += 1) {
+          const san = line.sanMoves[i]
+          if (!san) break
+          board.value?.playOpponentSan(san)
+          await nextTick()
+        }
       }
-    } else {
-      for (let i = current; i < next; i += 1) {
-        const san = line.sanMoves[i]
-        if (!san) break
-        board.value?.playOpponentSan(san)
-        await nextTick()
-      }
-    }
 
-    viewedPly.value = next === max ? null : next
-    board.value?.setLocked(flowLocked.value || isReplayMode.value)
+      viewedPly.value = next === max ? null : next
+      board.value?.setLocked(flowLocked.value || isReplayMode.value)
+    } finally {
+      board.value?.setMoveAnimationEnabled(true)
+    }
   }
 
   const resetView = (): void => {

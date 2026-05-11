@@ -33,12 +33,14 @@ const buildBoardStub = () => {
   const undoLastMove = vi.fn()
   const playOpponentSan = vi.fn()
   const setLocked = vi.fn()
+  const setMoveAnimationEnabled = vi.fn()
   const board = shallowRef({
     undoLastMove,
     playOpponentSan,
     setLocked,
+    setMoveAnimationEnabled,
   } as unknown as InstanceType<typeof import('~/components/ChessBoard.vue')['default']>)
-  return { board, undoLastMove, playOpponentSan, setLocked }
+  return { board, undoLastMove, playOpponentSan, setLocked, setMoveAnimationEnabled }
 }
 
 describe('useReplayControls', () => {
@@ -62,7 +64,7 @@ describe('useReplayControls', () => {
   it('stepping backward calls undoLastMove and updates viewedPly', async () => {
     const session = shallowRef(buildSession(3))
     const line = ref(buildLine(['e4', 'e5', 'Nf3']))
-    const { board, undoLastMove, setLocked } = buildBoardStub()
+    const { board, undoLastMove, setLocked, setMoveAnimationEnabled } = buildBoardStub()
     const flowLocked = ref(false)
     const { goMoveHistory, viewedPly, isReplayMode } = useReplayControls({
       session,
@@ -75,6 +77,8 @@ describe('useReplayControls', () => {
     expect(viewedPly.value).toBe(2)
     expect(isReplayMode.value).toBe(true)
     expect(setLocked).toHaveBeenLastCalledWith(true)
+    expect(setMoveAnimationEnabled).toHaveBeenNthCalledWith(1, false)
+    expect(setMoveAnimationEnabled).toHaveBeenLastCalledWith(true)
   })
 
   it('stepping forward replays the next SAN and clears viewedPly when caught up', async () => {
