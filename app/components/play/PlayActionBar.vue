@@ -1,6 +1,9 @@
 <script setup lang="ts">
 interface Props {
+  /** Hilfe toggle: board hint arrow is visible. */
   hintActive: boolean
+  /** Structural lock: Hilfe is not available (e.g. opponent to move, or move-history scrub). */
+  hintDisabled: boolean
   canGoBackward: boolean
   canGoForward: boolean
 }
@@ -21,9 +24,12 @@ defineEmits<{
   >
     <div class="flex items-stretch justify-around">
       <button
-        class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-primary) transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-        :disabled="hintActive"
+        type="button"
+        class="flex flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-2.5 text-xs font-medium text-(--ui-primary) transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+        :class="hintActive && !hintDisabled ? 'bg-(--ui-primary)/12 ring-1 ring-(--ui-primary)/35' : ''"
+        :disabled="hintDisabled"
         aria-label="Hilfe"
+        :aria-pressed="hintDisabled ? undefined : hintActive"
         @click="$emit('help')"
       >
         <UIcon name="i-lucide-lightbulb" class="h-5 w-5" />

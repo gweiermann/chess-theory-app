@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, toRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTopic } from '~/composables/useTopic'
 import { useTopicProgress } from '~/composables/useTopicProgress'
@@ -17,6 +17,7 @@ import {
   type PhaseMarkers,
   type ResetReason,
 } from '~/domain/session'
+import { isPlayHelpBlockedAtView } from '~/domain/training-turn'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
 import PlayEmptyState from '~/components/play/PlayEmptyState.vue'
 import PlayTopBar from '~/components/play/PlayTopBar.vue'
@@ -52,11 +53,13 @@ const showInfoModal = ref(false)
 const showActionSheet = ref(false)
 const flowLocked = ref(false)
 
+const replayNavigationHooks: { clearUserHint?: () => void } = {}
 const replay = useReplayControls({
   session,
   currentLine,
   board,
   flowLocked,
+  onReplayNavigation: () => replayNavigationHooks.clearUserHint?.(),
 })
 
 const flow = useSessionFlow({
@@ -68,6 +71,16 @@ const flow = useSessionFlow({
   isReplayMode: replay.isReplayMode,
   resetReplayView: replay.resetView,
 })
+replayNavigationHooks.clearUserHint = () => flow.clearHintArrow()
+
+const playHintActive = toRef(flow, 'hintActive')
+const playHintStructurallyDisabled = computed(() =>
+  isPlayHelpBlockedAtView(
+    currentLine.value,
+    replay.activeReplayPly.value,
+    replay.isReplayMode.value,
+  ),
+)
 
 const { masteredCount, totalLineCount } = useScopedProgress({
   topic,
@@ -259,7 +272,11 @@ const processUserMove = async (san: string): Promise<void> => {
   flow.showBuildingUserHint()
 }
 
-const showHelp = (): void => {
+const toggleHelp = (): void => {
+  if (flow.hintActive.value) {
+    flow.clearHintArrow()
+    return
+  }
   const ok = flow.showHintForExpected()
   if (!ok) return
   const t = topic.value
@@ -309,13 +326,15 @@ const goToOpenings = (): void => {
             :player-color="currentLine.userSide"
             @user-move="handleUserMove"
             @board-ready="onBoardReady"
+            @board-interaction="flow.clearHintArrow"
           />
 
           <PlayActionBar
-            :hint-active="flow.hintActive.value"
+            :hint-active="playHintActive"
+            :hint-disabled="playHintStructurallyDisabled"
             :can-go-backward="replay.canGoBackward.value"
             :can-go-forward="replay.canGoForward.value"
-            @help="showHelp"
+            @help="toggleHelp"
             @restart="restartLine"
             @more="showActionSheet = true"
             @step="replay.goMoveHistory"

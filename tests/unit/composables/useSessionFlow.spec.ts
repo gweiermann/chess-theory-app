@@ -39,9 +39,14 @@ const buildSession = (overrides: Partial<{
   prefixPlies: number
   totalSteps: number
   repsDone: number
+  lineSanMoves: string[]
+  userSide: 'white' | 'black'
 }> = {}): TrainingSession => ({
   state: ref({
-    line: buildLine(['e4', 'e5', 'Nf3']),
+    line: buildLine(
+      overrides.lineSanMoves ?? ['e4', 'e5', 'Nf3'],
+      overrides.userSide ?? 'white',
+    ),
     phase: overrides.phase ?? 'building',
     currentStep: overrides.currentStep ?? 1,
     expectedMoveIndex: overrides.expectedMoveIndex ?? 0,
@@ -101,6 +106,27 @@ describe('useSessionFlow', () => {
     const flow = useSessionFlow({
       session: shallowRef(buildSession({ expectedSan: null })),
       currentLine: ref(buildLine(['e4'])),
+      demonstratedSteps: ref(new Set()),
+      board,
+      flowLocked: ref(false),
+      isReplayMode: computed(() => false),
+      resetReplayView: () => {},
+    })
+    expect(flow.showHintForExpected()).toBe(false)
+    expect(drawHintForSan).not.toHaveBeenCalled()
+    expect(flow.hintActive.value).toBe(false)
+  })
+
+  it('showHintForExpected does not draw on opponent plies (would show opponent reply)', () => {
+    const { board, drawHintForSan } = buildBoardStub()
+    const line = buildLine(['e4', 'e5', 'Nf3'], 'white')
+    const flow = useSessionFlow({
+      session: shallowRef(buildSession({
+        expectedMoveIndex: 1,
+        expectedSan: 'e5',
+        phase: 'building',
+      })),
+      currentLine: ref(line),
       demonstratedSteps: ref(new Set()),
       board,
       flowLocked: ref(false),

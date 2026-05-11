@@ -10,6 +10,8 @@ interface UseReplayControlsArgs {
   currentLine: Ref<Line | null>
   board: BoardRef
   flowLocked: Ref<boolean>
+  /** Clears user hint state when stepping through move history (board + UI). */
+  onReplayNavigation?: () => void
 }
 
 export interface UseReplayControls {
@@ -36,6 +38,7 @@ export const useReplayControls = ({
   currentLine,
   board,
   flowLocked,
+  onReplayNavigation,
 }: UseReplayControlsArgs): UseReplayControls => {
   const viewedPly = ref<number | null>(null)
 
@@ -52,6 +55,8 @@ export const useReplayControls = ({
     const current = activeReplayPly.value
     const next = Math.min(Math.max(current + delta, 0), max)
     if (next === current) return
+
+    onReplayNavigation?.()
 
     const line = currentLine.value
     if (!line) return

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { TheChessboard, type BoardApi } from 'vue3-chessboard'
+import { TheChessboard, type BoardApi, type DrawShape } from 'vue3-chessboard'
 import 'vue3-chessboard/style.css'
 import { Chess, type Move, type Square } from 'chess.js'
 import type { Side } from '~/domain/types'
@@ -20,6 +20,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   (e: 'user-move', san: string, move: Move): void
   (e: 'ready', api: BoardApi): void
+  (e: 'board-interaction'): void
 }>()
 
 const apiRef = ref<BoardApi | null>(null)
@@ -45,11 +46,26 @@ const rankLabels = computed(() =>
  * the props change. Chessground then picks up the latest orientation /
  * playerColor on the next reset.
  */
+const emitBoardInteraction = (): void => {
+  emit('board-interaction')
+}
+
 const boardConfig = {
   orientation: props.orientation,
   movable: { color: props.playerColor as Side | undefined },
   animation: { enabled: false, duration: 0 },
   coordinates: false,
+  events: {
+    /** Piece/square taps: chessground often clears drawable shapes before we hear about moves. */
+    select: () => {
+      emitBoardInteraction()
+    },
+  },
+  drawable: {
+    onChange: (shapes: DrawShape[]) => {
+      if (shapes.length === 0) emitBoardInteraction()
+    },
+  },
 }
 
 const handleBoardCreated = (api: BoardApi): void => {

@@ -1,7 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, onMounted } from 'vue'
 import ChessBoard from '~/components/ChessBoard.vue'
+import type { BoardApi } from 'vue3-chessboard'
 
 beforeAll(() => {
   if (!HTMLElement.prototype.animate) {
@@ -181,6 +182,45 @@ describe('ChessBoard', () => {
     expect(userMoves).toHaveLength(1)
     expect(userMoves[0]![0]).toBe('e4')
 
+    wrapper.unmount()
+  })
+
+  it('emits board-interaction when drawable.onChange reports empty shapes', async () => {
+    const minimalApi = {
+      getFen: () => 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      setConfig: vi.fn(),
+      setShapes: vi.fn(),
+      move: vi.fn(),
+      resetBoard: vi.fn(),
+      undoLastMove: vi.fn(),
+    } as unknown as BoardApi
+
+    const TheChessboardStub = defineComponent({
+      name: 'TheChessboard',
+      props: ['boardConfig', 'playerColor'],
+      emits: ['boardCreated', 'move'],
+      setup(props, { emit }) {
+        onMounted(() => {
+          emit('boardCreated', minimalApi)
+          const bc = props.boardConfig as {
+            drawable?: { onChange?: (shapes: unknown[]) => void }
+          }
+          bc.drawable?.onChange?.([])
+        })
+        return () => h('div')
+      },
+    })
+
+    const wrapper = mount(ChessBoard, {
+      global: {
+        stubs: { TheChessboard: TheChessboardStub },
+      },
+      attachTo: document.body,
+    })
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.emitted('board-interaction')).toHaveLength(1)
     wrapper.unmount()
   })
 })

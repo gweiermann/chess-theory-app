@@ -31,6 +31,7 @@ const TOP_BAR_ARGS = {
 interface PageOptions {
   phaseLabel: string
   hintActive?: boolean
+  hintDisabled?: boolean
   canGoBackward?: boolean
   canGoForward?: boolean
   driveBoard?: (api: BoardApi) => void
@@ -66,6 +67,7 @@ const renderFullPage = (options: PageOptions) => () =>
             ]),
             h(PlayActionBar, {
               hintActive: options.hintActive ?? false,
+              hintDisabled: options.hintDisabled ?? false,
               canGoBackward: options.canGoBackward ?? false,
               canGoForward: options.canGoForward ?? false,
             }),

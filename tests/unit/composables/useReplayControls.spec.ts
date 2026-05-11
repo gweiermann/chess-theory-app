@@ -140,6 +140,51 @@ describe('useReplayControls', () => {
     expect(viewedPly.value).toBeNull()
   })
 
+  it('invokes onReplayNavigation when the viewed ply changes', async () => {
+    const session = shallowRef(buildSession(3))
+    const line = ref(buildLine(['e4', 'e5', 'Nf3']))
+    const { board } = buildBoardStub()
+    const onReplayNavigation = vi.fn()
+    const { goMoveHistory } = useReplayControls({
+      session,
+      currentLine: line,
+      board,
+      flowLocked: ref(false),
+      onReplayNavigation,
+    })
+    await goMoveHistory(-1)
+    expect(onReplayNavigation).toHaveBeenCalledTimes(1)
+
+    await goMoveHistory(-1)
+    expect(onReplayNavigation).toHaveBeenCalledTimes(2)
+
+    await goMoveHistory(1)
+    expect(onReplayNavigation).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not invoke onReplayNavigation when clamped at bounds', async () => {
+    const session = shallowRef(buildSession(2))
+    const line = ref(buildLine(['e4', 'e5', 'Nf3']))
+    const { board } = buildBoardStub()
+    const onReplayNavigation = vi.fn()
+    const { goMoveHistory, viewedPly } = useReplayControls({
+      session,
+      currentLine: line,
+      board,
+      flowLocked: ref(false),
+      onReplayNavigation,
+    })
+    await goMoveHistory(1)
+    expect(onReplayNavigation).not.toHaveBeenCalled()
+    expect(viewedPly.value).toBeNull()
+
+    await goMoveHistory(-1)
+    await goMoveHistory(-1)
+    onReplayNavigation.mockClear()
+    await goMoveHistory(-1)
+    expect(onReplayNavigation).not.toHaveBeenCalled()
+  })
+
   it('respects flowLocked when reapplying lock state', async () => {
     const session = shallowRef(buildSession(3))
     const line = ref(buildLine(['e4', 'e5', 'Nf3']))

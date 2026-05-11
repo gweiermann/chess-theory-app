@@ -76,7 +76,12 @@ export const useSessionFlow = ({
 
   const showHintForExpected = (): boolean => {
     const s = session.value
-    if (!s) return false
+    const line = currentLine.value
+    if (!s || !line) return false
+    // `expectedSan` is the next ply in the line; on opponent plies the user
+    // is not expected to move (auto-play). Showing a hint would mark the
+    // opponent's reply as the "help" move.
+    if (isOpponentPly(line, s.state.value.expectedMoveIndex)) return false
     const san = s.state.value.expectedSan
     if (!san) return false
     const ok = board.value?.drawHintForSan(san) ?? false

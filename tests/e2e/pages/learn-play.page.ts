@@ -65,10 +65,15 @@ export class LearnPlayPage {
     for (let i = 0; i < 40; i += 1) {
       san = await tryParse()
       if (san) return san
-      try {
-        await hintButton.click({ timeout: 500 })
-        await this.page.waitForTimeout(150)
-      } catch {
+      const pressed = await hintButton.getAttribute('aria-pressed')
+      if (pressed !== 'true') {
+        try {
+          await hintButton.click({ timeout: 500 })
+          await this.page.waitForTimeout(150)
+        } catch {
+          await this.page.waitForTimeout(80)
+        }
+      } else {
         await this.page.waitForTimeout(80)
       }
       san = await tryParse()

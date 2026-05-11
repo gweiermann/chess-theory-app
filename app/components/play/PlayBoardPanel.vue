@@ -13,6 +13,7 @@ defineProps<Props>()
 const emit = defineEmits<{
   (e: 'userMove', san: string): void
   (e: 'boardReady', board: InstanceType<typeof ChessBoard> | null): void
+  (e: 'boardInteraction'): void
 }>()
 
 const board = ref<InstanceType<typeof ChessBoard> | null>(null)
@@ -29,6 +30,7 @@ watch(board, (next) => emit('boardReady', next), { immediate: true })
       :orientation="orientation"
       :player-color="playerColor"
       @user-move="emit('userMove', $event)"
+      @board-interaction="emit('boardInteraction')"
     />
   </div>
 </template>
