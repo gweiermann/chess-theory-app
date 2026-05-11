@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { TheChessboard, type BoardApi, type DrawShape } from 'vue3-chessboard'
 import 'vue3-chessboard/style.css'
 import { Chess, type Move, type Square } from 'chess.js'
+import { BOARD_MOVE_ANIMATION_DURATION_MS } from '~/domain/board-animation'
 import type { Side } from '~/domain/types'
 
 interface Props {
@@ -50,13 +51,11 @@ const emitBoardInteraction = (): void => {
   emit('board-interaction')
 }
 
-/** Chessground animates plies when duration >= 70ms; below that it forces animation off. */
-const MOVE_ANIMATION_DURATION_MS = 220
-
 const boardConfig = {
   orientation: props.orientation,
   movable: { color: props.playerColor as Side | undefined },
-  animation: { enabled: true, duration: MOVE_ANIMATION_DURATION_MS },
+  /** Chessground animates when duration >= ~70ms. */
+  animation: { enabled: true, duration: BOARD_MOVE_ANIMATION_DURATION_MS },
   coordinates: false,
   events: {
     /** Piece/square taps: chessground often clears drawable shapes before we hear about moves. */
@@ -101,18 +100,23 @@ const playOpponentSan = (san: string): boolean => {
 const setMoveAnimationEnabled = (enabled: boolean): void => {
   boardConfig.animation = {
     enabled,
-    duration: enabled ? MOVE_ANIMATION_DURATION_MS : 0,
+    duration: enabled ? BOARD_MOVE_ANIMATION_DURATION_MS : 0,
   }
   apiRef.value?.setConfig({
     animation: {
       enabled,
-      duration: enabled ? MOVE_ANIMATION_DURATION_MS : 0,
+      duration: enabled ? BOARD_MOVE_ANIMATION_DURATION_MS : 0,
     },
   })
 }
 
 const reset = (): void => {
   apiRef.value?.resetBoard()
+}
+
+/** Full position load (chess.js + Chessground). Animates from the current layout when animation is enabled. */
+const setPositionFromFen = (fen: string): void => {
+  apiRef.value?.setPosition(fen)
 }
 
 const setPlayerColor = (color: Side): void => {
@@ -203,6 +207,7 @@ const clearHints = (): void => {
 defineExpose({
   playOpponentSan,
   reset,
+  setPositionFromFen,
   setPlayerColor,
   setLocked,
   setMoveAnimationEnabled,

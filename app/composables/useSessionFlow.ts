@@ -1,6 +1,8 @@
 import { nextTick, ref, type ComputedRef, type Ref } from 'vue'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
 import type { TrainingSession } from '~/composables/training-session'
+import { boardAnimationSettleMs } from '~/domain/board-animation'
+import { fenAfterFirstNSans } from '~/domain/prefix-fen'
 import { willMoveTriggerReset } from '~/domain/session'
 import { isOpponentPly } from '~/domain/training-turn'
 import type { Line } from '~/domain/types'
@@ -160,10 +162,8 @@ export const useSessionFlow = ({
   }
 
   /**
-   * Auto-play the prefix plies (the parent's moves) onto the board in one go.
-   * Used on every reset (step / rep change) AFTER the user has completed the
-   * intro – the user should never have to replay the parent by hand during
-   * a drill loop. Used at session start only when `skipIntro` is on.
+   * Apply the session's parent-prefix position: prefer one FEN update; if SANs
+   * cannot be condensed to a legal FEN, replay prefix plies sequentially.
    */
   const replayPrefixOntoBoard = (): void => {
     const line = currentLine.value
@@ -171,6 +171,11 @@ export const useSessionFlow = ({
     if (!line || !s) return
     const prefix = s.state.value.prefixPlies
     if (prefix <= 0) return
+    const fen = fenAfterFirstNSans(line.sanMoves, prefix)
+    if (fen) {
+      board.value?.setPositionFromFen(fen)
+      return
+    }
     for (let i = 0; i < prefix; i += 1) {
       const san = line.sanMoves[i]
       if (!san) break
@@ -181,13 +186,34 @@ export const useSessionFlow = ({
   const resetBoardForNextAttempt = async (): Promise<void> => {
     isResetting.value = true
     clearHintArrow()
-    board.value?.setMoveAnimationEnabled(false)
-    try {
+    const line = currentLine.value
+    const s = session.value
+    if (!line || !s) {
+      isResetting.value = false
+      await playOpponentIfNeeded()
+      showBuildingUserHint()
+      setBoardLocked(false)
+      return
+    }
+    const prefix = s.state.value.prefixPlies
+    const targetFen = fenAfterFirstNSans(line.sanMoves, prefix)
+    board.value?.setMoveAnimationEnabled(true)
+    if (targetFen) {
+      board.value?.setPositionFromFen(targetFen)
+    } else {
       board.value?.reset()
-      await nextTick()
-      replayPrefixOntoBoard()
-    } finally {
-      board.value?.setMoveAnimationEnabled(true)
+    }
+    await nextTick()
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, boardAnimationSettleMs()),
+    )
+    if (!targetFen && prefix > 0) {
+      board.value?.setMoveAnimationEnabled(false)
+      try {
+        replayPrefixOntoBoard()
+      } finally {
+        board.value?.setMoveAnimationEnabled(true)
+      }
     }
     isResetting.value = false
     await playOpponentIfNeeded()

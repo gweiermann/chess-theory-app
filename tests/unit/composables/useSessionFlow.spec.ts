@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { computed, ref, shallowRef } from 'vue'
 import { useSessionFlow } from '~/composables/useSessionFlow'
 import type { TrainingSession } from '~/composables/training-session'
+import { fenAfterFirstNSans } from '~/domain/prefix-fen'
 import type { Line } from '~/domain/types'
 
 const buildLine = (sanMoves: string[], userSide: 'white' | 'black' = 'white'): Line => ({
@@ -19,6 +20,7 @@ const buildBoardStub = () => {
   const clearHints = vi.fn()
   const playOpponentSan = vi.fn(() => true)
   const reset = vi.fn()
+  const setPositionFromFen = vi.fn()
   const setMoveAnimationEnabled = vi.fn()
   const board = shallowRef({
     setLocked,
@@ -26,9 +28,19 @@ const buildBoardStub = () => {
     clearHints,
     playOpponentSan,
     reset,
+    setPositionFromFen,
     setMoveAnimationEnabled,
   } as unknown as InstanceType<typeof import('~/components/ChessBoard.vue')['default']>)
-  return { board, setLocked, drawHintForSan, clearHints, playOpponentSan, reset, setMoveAnimationEnabled }
+  return {
+    board,
+    setLocked,
+    drawHintForSan,
+    clearHints,
+    playOpponentSan,
+    reset,
+    setPositionFromFen,
+    setMoveAnimationEnabled,
+  }
 }
 
 const buildSession = (overrides: Partial<{
@@ -175,11 +187,12 @@ describe('useSessionFlow', () => {
     expect(flow.flushBufferedUserMove()).toBeNull()
   })
 
-  it('replayPrefixOntoBoard plays the configured prefix plies', async () => {
-    const { board, playOpponentSan } = buildBoardStub()
+  it('replayPrefixOntoBoard sets one FEN for the configured prefix depth', async () => {
+    const { board, playOpponentSan, setPositionFromFen } = buildBoardStub()
+    const line = buildLine(['e4', 'e5', 'Nf3'])
     const flow = useSessionFlow({
       session: shallowRef(buildSession({ prefixPlies: 2 })),
-      currentLine: ref(buildLine(['e4', 'e5', 'Nf3'])),
+      currentLine: ref(line),
       demonstratedSteps: ref(new Set()),
       board,
       flowLocked: ref(false),
@@ -187,13 +200,15 @@ describe('useSessionFlow', () => {
       resetReplayView: () => {},
     })
     flow.replayPrefixOntoBoard()
-    expect(playOpponentSan).toHaveBeenCalledTimes(2)
-    expect(playOpponentSan).toHaveBeenNthCalledWith(1, 'e4')
-    expect(playOpponentSan).toHaveBeenNthCalledWith(2, 'e5')
+    expect(setPositionFromFen).toHaveBeenCalledTimes(1)
+    expect(setPositionFromFen).toHaveBeenCalledWith(
+      fenAfterFirstNSans(line.sanMoves, 2),
+    )
+    expect(playOpponentSan).not.toHaveBeenCalled()
   })
 
   it('replayPrefixOntoBoard is a no-op when prefixPlies is 0', async () => {
-    const { board, playOpponentSan } = buildBoardStub()
+    const { board, playOpponentSan, setPositionFromFen } = buildBoardStub()
     const flow = useSessionFlow({
       session: shallowRef(buildSession({ prefixPlies: 0 })),
       currentLine: ref(buildLine(['e4'])),
@@ -205,10 +220,18 @@ describe('useSessionFlow', () => {
     })
     flow.replayPrefixOntoBoard()
     expect(playOpponentSan).not.toHaveBeenCalled()
+    expect(setPositionFromFen).not.toHaveBeenCalled()
   })
 
-  it('resetBoardForNextAttempt disables move animation around reset and prefix replay', async () => {
-    const { board, reset, playOpponentSan, setMoveAnimationEnabled } = buildBoardStub()
+  it('resetBoardForNextAttempt animates in one jump to parent base FEN', async () => {
+    const line = buildLine(['e4', 'e5', 'Nf3'])
+    const {
+      board,
+      reset,
+      playOpponentSan,
+      setMoveAnimationEnabled,
+      setPositionFromFen,
+    } = buildBoardStub()
     const flow = useSessionFlow({
       session: shallowRef(
         buildSession({
@@ -217,7 +240,7 @@ describe('useSessionFlow', () => {
           lineSanMoves: ['e4', 'e5', 'Nf3'],
         }),
       ),
-      currentLine: ref(buildLine(['e4', 'e5', 'Nf3'])),
+      currentLine: ref(line),
       demonstratedSteps: ref(new Set()),
       board,
       flowLocked: ref(false),
@@ -226,11 +249,13 @@ describe('useSessionFlow', () => {
       opponentDelayMs: 0,
     })
     await flow.resetBoardForNextAttempt()
-    expect(setMoveAnimationEnabled).toHaveBeenNthCalledWith(1, false)
-    expect(reset).toHaveBeenCalledTimes(1)
-    expect(playOpponentSan).toHaveBeenNthCalledWith(1, 'e4')
-    expect(playOpponentSan).toHaveBeenNthCalledWith(2, 'e5')
-    expect(setMoveAnimationEnabled).toHaveBeenLastCalledWith(true)
+    expect(reset).not.toHaveBeenCalled()
+    expect(setMoveAnimationEnabled).toHaveBeenCalledTimes(1)
+    expect(setMoveAnimationEnabled).toHaveBeenCalledWith(true)
+    expect(setPositionFromFen).toHaveBeenCalledWith(
+      fenAfterFirstNSans(line.sanMoves, 2),
+    )
+    expect(playOpponentSan).not.toHaveBeenCalled()
   })
 
   it('isOpponentInFlight is false at rest', () => {

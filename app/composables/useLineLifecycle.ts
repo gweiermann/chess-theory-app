@@ -1,4 +1,4 @@
-import type { Ref } from 'vue'
+import { nextTick, type Ref } from 'vue'
 import type { CurrentSelection } from '~/infra/selection-repository'
 import type { TrainingSession } from '~/composables/training-session'
 import { createTrainingSession } from '~/composables/training-session'
@@ -6,7 +6,9 @@ import type { useTopicProgress } from '~/composables/useTopicProgress'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
 import type { UseSessionFlow } from '~/composables/useSessionFlow'
 import type { UseReplayControls } from '~/composables/useReplayControls'
+import { boardAnimationSettleMs } from '~/domain/board-animation'
 import { computeLineSetup } from '~/domain/line-setup'
+import { fenAfterFirstNSans } from '~/domain/prefix-fen'
 import { selectLineForFocus } from '~/domain/select-next-line'
 import { TARGET_REPS } from '~/domain/session'
 import type { Line, LineProgress, Topic } from '~/domain/types'
@@ -94,14 +96,26 @@ export const useLineLifecycle = ({
     flow.setBoardLocked(true)
 
     setTimeout(async () => {
-      board.value?.setMoveAnimationEnabled(false)
-      try {
+      const plyCount =
+        skipIntro && prefixPlies > 0 ? prefixPlies : 0
+      const targetFen = fenAfterFirstNSans(line.sanMoves, plyCount)
+      board.value?.setMoveAnimationEnabled(true)
+      if (targetFen) {
+        board.value?.setPositionFromFen(targetFen)
+      } else {
         board.value?.reset()
-        if (skipIntro && prefixPlies > 0) {
+      }
+      await nextTick()
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, boardAnimationSettleMs()),
+      )
+      if (!targetFen && prefixPlies > 0) {
+        board.value?.setMoveAnimationEnabled(false)
+        try {
           flow.replayPrefixOntoBoard()
+        } finally {
+          board.value?.setMoveAnimationEnabled(true)
         }
-      } finally {
-        board.value?.setMoveAnimationEnabled(true)
       }
       await flow.playOpponentIfNeeded()
       flow.showBuildingUserHint()

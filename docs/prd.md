@@ -3,7 +3,7 @@
 **Product:** Chess Theory Drill (working title as shown in the browser)  
 **Stack (context):** Nuxt 4, client-side opening data, local persistence  
 **Primary language:** German (UI copy, navigation, errors)  
-**Last updated:** 2026-05-03  
+**Last updated:** 2026-05-11  
 **Sources:** Live app walkthrough (browser), `docs/glossary.md`, and application code.
 
 ---
@@ -244,10 +244,10 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 | Constant | Value | Role |
 |----------|------:|------|
 | Opponent auto-move delay | 350 ms | Pause before the app plays the opponent’s SAN. |
-| Delay before board reset after boundary | 600 ms | Beat between last move and snap-back. |
+| Delay before board reset after boundary | 600 ms | Beat between last move and animated return to parent base. |
 | Delay before advancing to **next line** after mastery | 1500 ms | Breathing room before new line session. |
 | Mistake banner visible | 1800 ms | Auto-dismiss mistake feedback. |
-| Parent-prefix replay on board | instant | Prefix SANs snap into place without move animation (see D8 vs D15). |
+| Parent base after physical reset | ~220 ms (animated) | One Chessground transition from the current mess to the correct parent-prefix FEN (not via global start plus a second jump). Rare invalid data: fall back to global reset plus instant prefix replay. |
 
 **Premove / lock interaction with reset**
 
