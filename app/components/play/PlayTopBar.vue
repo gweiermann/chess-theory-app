@@ -25,13 +25,13 @@ defineEmits<{ (e: 'back'): void }>()
         <UIcon name="i-lucide-chevron-left" class="h-7 w-7" />
       </button>
       <p
-        class="flex-1 truncate text-center text-base text-(--ui-text-muted)"
+        class="flex-1 truncate text-center text-xl text-(--ui-text-muted)"
         data-testid="play-topic-label"
       >
         {{ topicLabel }}<template v-if="familyName"> · {{ familyName }}</template>
       </p>
       <span
-        class="shrink-0 tabular-nums text-base text-(--ui-text-muted)"
+        class="shrink-0 tabular-nums text-xl text-(--ui-text-muted)"
         data-testid="play-progress"
       >
         {{ masteredCount }}/{{ totalLineCount }}

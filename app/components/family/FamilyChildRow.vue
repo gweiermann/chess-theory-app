@@ -23,10 +23,10 @@ const emit = defineEmits<{
     <template v-if="child.children.length === 0 && child.lineId">
       <div class="flex items-center justify-between gap-4 p-3 sm:p-4">
         <div class="min-w-0">
-          <p class="truncate text-sm sm:text-base">
+          <p class="truncate text-base">
             <span
               v-if="resolveLine(child.lineId)?.eco"
-              class="mr-1 font-mono text-xs text-(--ui-text-muted)"
+              class="mr-1 font-mono text-sm text-(--ui-text-muted)"
             >
               {{ resolveLine(child.lineId)!.eco }}
             </span>
@@ -34,7 +34,7 @@ const emit = defineEmits<{
           </p>
           <p
             v-if="resolveLine(child.lineId)"
-            class="mt-0.5 text-xs text-(--ui-text-muted)"
+            class="mt-0.5 text-sm text-(--ui-text-muted)"
           >
             {{ resolveLine(child.lineId)!.sanMoves.length }} Züge
           </p>
@@ -70,8 +70,8 @@ const emit = defineEmits<{
           @click="emit('navigate', child)"
         >
           <div class="min-w-0">
-            <p class="truncate text-sm font-medium sm:text-base">{{ child.label }}</p>
-            <p class="mt-0.5 text-xs text-(--ui-text-muted)">
+            <p class="truncate text-base font-medium">{{ child.label }}</p>
+            <p class="mt-0.5 text-sm text-(--ui-text-muted)">
               {{ childProgressLabel }} Zugfolgen
             </p>
           </div>

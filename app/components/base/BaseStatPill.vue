@@ -10,7 +10,7 @@ defineProps<Props>()
 
 <template>
   <div
-    class="inline-flex items-center gap-2 rounded-full border border-(--ui-border) bg-(--ui-bg) px-3 py-1.5 text-xs text-(--ui-text-muted)"
+    class="inline-flex items-center gap-2 rounded-full border border-(--ui-border) bg-(--ui-bg) px-3 py-1.5 text-sm text-(--ui-text-muted)"
   >
     <UIcon
       v-if="icon"

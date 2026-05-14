@@ -10,7 +10,7 @@ defineProps<{ label: string }>()
   >
     <div class="absolute inset-0 flex items-center px-4">
       <span
-        class="flex-1 truncate text-sm font-medium text-(--ui-primary)"
+        class="flex-1 truncate text-base font-medium text-(--ui-primary)"
         data-testid="play-phase-label"
       >
         {{ label }}

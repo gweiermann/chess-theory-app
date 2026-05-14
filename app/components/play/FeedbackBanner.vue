@@ -17,7 +17,7 @@ const tone = computed(() => {
 <template>
   <div
     v-if="feedback"
-    class="text-sm"
+    class="text-base"
     :class="{
       'text-(--ui-error)': tone === 'error',
       'text-(--ui-success)': tone === 'success',

@@ -24,11 +24,11 @@ const percent = computed(() =>
     <div class="flex items-baseline justify-between gap-2">
       <span
         class="text-(--ui-text-muted)"
-        :class="size === 'sm' ? 'text-xs' : 'text-sm'"
+        :class="size === 'sm' ? 'text-sm' : 'text-base'"
       >
         Fortschritt
       </span>
-      <span :class="size === 'sm' ? 'text-xs' : 'text-sm font-medium'">
+      <span :class="size === 'sm' ? 'text-sm' : 'text-base font-medium'">
         {{ mastered }} / {{ total }}{{ unitLabel ? ` ${unitLabel}` : '' }} · {{ percent }}%
       </span>
     </div>

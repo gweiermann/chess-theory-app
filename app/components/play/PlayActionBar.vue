@@ -25,7 +25,7 @@ defineEmits<{
     <div class="flex items-stretch justify-around">
       <button
         type="button"
-        class="flex flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-2.5 text-xs font-medium text-(--ui-primary) transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+        class="flex flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-2.5 text-sm font-medium text-(--ui-primary) transition-colors disabled:cursor-not-allowed disabled:opacity-40"
         :class="hintActive && !hintDisabled ? 'bg-(--ui-primary)/12 ring-1 ring-(--ui-primary)/35' : ''"
         :disabled="hintDisabled"
         aria-label="Hilfe"
@@ -36,7 +36,7 @@ defineEmits<{
         <span>Hilfe</span>
       </button>
       <button
-        class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:text-(--ui-text)"
+        class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-sm font-medium text-(--ui-text-muted) transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:text-(--ui-text)"
         :disabled="!canGoBackward"
         aria-label="Zurück"
         @click="$emit('step', -1)"
@@ -45,7 +45,7 @@ defineEmits<{
         <span>Zurück</span>
       </button>
       <button
-        class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:text-(--ui-text)"
+        class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-sm font-medium text-(--ui-text-muted) transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:text-(--ui-text)"
         :disabled="!canGoForward"
         aria-label="Vor"
         @click="$emit('step', 1)"
@@ -54,7 +54,7 @@ defineEmits<{
         <span>Vor</span>
       </button>
       <button
-        class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
+        class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-sm font-medium text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
         aria-label="Neu starten"
         @click="$emit('restart')"
       >
@@ -62,7 +62,7 @@ defineEmits<{
         <span>Neustart</span>
       </button>
       <button
-        class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-xs font-medium text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
+        class="flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-sm font-medium text-(--ui-text-muted) transition-colors hover:text-(--ui-text)"
         aria-label="Mehr"
         @click="$emit('more')"
       >

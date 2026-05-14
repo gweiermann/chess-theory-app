@@ -16,7 +16,7 @@ defineEmits<{ (e: 'practice'): void }>()
 <template>
   <header class="mb-6 flex flex-col gap-3 sm:mb-8">
     <h1 class="text-2xl font-semibold sm:text-4xl">{{ label }}</h1>
-    <p class="text-sm text-(--ui-text-muted) sm:text-base">
+    <p class="text-base text-(--ui-text-muted)">
       {{ masteredCount }} / {{ totalLines }} Zugfolgen gemeistert
     </p>
     <div class="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center">
@@ -33,7 +33,7 @@ defineEmits<{ (e: 'practice'): void }>()
       </UButton>
       <p
         v-if="introHint"
-        class="text-xs text-(--ui-text-muted) sm:ml-1"
+        class="text-sm text-(--ui-text-muted) sm:ml-1"
       >
         {{ introHint }}
       </p>

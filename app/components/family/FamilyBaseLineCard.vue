@@ -26,15 +26,15 @@ const emit = defineEmits<{ (e: 'practice'): void }>()
     <div class="flex items-center justify-between gap-4 p-3 pl-5 sm:p-4 sm:pl-6">
       <div class="min-w-0">
         <p
-          class="text-xs font-semibold uppercase tracking-widest"
+          class="text-sm font-semibold uppercase tracking-widest"
           :class="mastered ? 'text-(--ui-success)' : 'text-(--ui-primary)'"
         >
           Grundposition
         </p>
-        <p class="mt-0.5 truncate text-sm font-medium sm:text-base">
+        <p class="mt-0.5 truncate text-base font-medium">
           {{ line?.fullName ?? label }}
         </p>
-        <p v-if="line" class="mt-0.5 text-xs text-(--ui-text-muted)">
+        <p v-if="line" class="mt-0.5 text-sm text-(--ui-text-muted)">
           {{ line.sanMoves.length }} Züge
         </p>
       </div>

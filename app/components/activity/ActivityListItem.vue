@@ -33,14 +33,14 @@ const averageSeconds = computed(() => {
     class="flex flex-col gap-2 border-b border-(--ui-border) p-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
   >
     <div class="min-w-0">
-      <div class="flex items-center gap-2 text-xs text-(--ui-text-muted)">
+      <div class="flex items-center gap-2 text-sm text-(--ui-text-muted)">
         <span>{{ entry.topicLabel }}</span>
         <span v-if="entry.familyName">· {{ entry.familyName }}</span>
         <span>· {{ relativeTime }}</span>
       </div>
-      <p class="mt-1 truncate text-sm sm:text-base">
+      <p class="mt-1 truncate text-base">
         <span v-if="entry.line">
-          <span class="mr-1 font-mono text-xs text-(--ui-text-muted)">
+          <span class="mr-1 font-mono text-sm text-(--ui-text-muted)">
             {{ entry.line.eco }}
           </span>
           {{ entry.line.fullName }}

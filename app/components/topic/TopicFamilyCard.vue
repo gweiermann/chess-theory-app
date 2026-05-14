@@ -24,7 +24,7 @@ const emit = defineEmits<{
             <p class="truncate text-base font-semibold sm:text-lg">
               {{ family.name }}
             </p>
-            <p class="mt-1 text-xs text-(--ui-text-muted)">
+            <p class="mt-1 text-sm text-(--ui-text-muted)">
               {{ family.lines.length }} Zugfolgen
             </p>
           </div>

@@ -68,7 +68,7 @@ const indicatorOuterClass = computed(() =>
 
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-2">
-        <span class="text-sm font-semibold">{{ title }}</span>
+        <span class="text-base font-semibold">{{ title }}</span>
         <UBadge
           v-if="badge"
           color="neutral"
@@ -78,7 +78,7 @@ const indicatorOuterClass = computed(() =>
           {{ badge }}
         </UBadge>
       </div>
-      <p v-if="description" class="mt-0.5 text-xs text-(--ui-text-muted)">
+      <p v-if="description" class="mt-0.5 text-sm text-(--ui-text-muted)">
         {{ description }}
       </p>
     </div>

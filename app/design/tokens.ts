@@ -21,13 +21,13 @@ export const heading = {
   page: 'text-2xl font-semibold sm:text-4xl',
   section: 'text-lg font-semibold sm:text-xl',
   card: 'text-base font-semibold',
-  eyebrow: 'text-xs uppercase tracking-widest text-(--ui-text-muted)',
+  eyebrow: 'text-sm uppercase tracking-widest text-(--ui-text-muted)',
 } as const
 
 export const body = {
-  base: 'text-sm sm:text-base text-(--ui-text)',
-  muted: 'text-sm text-(--ui-text-muted)',
-  small: 'text-xs text-(--ui-text-muted)',
+  base: 'text-base text-(--ui-text)',
+  muted: 'text-base text-(--ui-text-muted)',
+  small: 'text-sm text-(--ui-text-muted)',
 } as const
 
 export const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ui-primary) focus-visible:ring-offset-2 focus-visible:ring-offset-(--ui-bg)'

@@ -59,7 +59,7 @@ const expectedSan = computed(() =>
     <BaseProgressBar :percent="phasePercent" />
 
     <div v-if="!isDone" class="flex items-baseline gap-3">
-      <span class="text-sm text-(--ui-text-muted)">Nächster Zug</span>
+      <span class="text-base text-(--ui-text-muted)">Nächster Zug</span>
       <span class="font-mono text-base">
         {{ expectedSan }}
       </span>
