@@ -24,3 +24,8 @@
 - Always verify UI/UX changes by running a browser and testing the new feature
 - Always use tdd: write one failing test, make it pass, refactor, repeat
 - Always add regression tests
+
+# Browser automation (IDE browser MCP)
+
+- Do not take browser screenshots unless the user explicitly asks for a screenshot in their message
+- Never use `browser_mouse_click_xy`; interact using element refs from snapshots (or other ref-based browser tools) instead

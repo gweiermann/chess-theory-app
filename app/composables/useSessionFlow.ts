@@ -9,6 +9,14 @@ import type { Line } from '~/domain/types'
 
 type BoardRef = Ref<InstanceType<typeof ChessBoardComponent> | null>
 
+/**
+ * Delay between an illegal user attempt and undoing it on the board. Long
+ * enough for the user to see what they tried, short enough that the auto-hint
+ * arrow feels like immediate feedback. Centralised here so the value can stay
+ * in sync with QA timing (§4.4.1) and unit tests.
+ */
+export const WRONG_MOVE_UNDO_DELAY_MS = 200
+
 interface UseSessionFlowArgs {
   session: Ref<TrainingSession | null>
   currentLine: Ref<Line | null>
@@ -42,6 +50,13 @@ export interface UseSessionFlow {
   bufferUserMove: (san: string) => void
   /** Take and clear any buffered premove. */
   flushBufferedUserMove: () => string | null
+  /**
+   * Single-try wrong-move feedback: lock the board, undo the illegal try after
+   * a short pause, draw the expected-move hint arrow, and unlock. Replaces the
+   * page-level inline timer so the hint is shown automatically on every
+   * mistake (no need for the user to press Hilfe).
+   */
+  handleWrongMove: () => void
 }
 
 /**
@@ -253,6 +268,15 @@ export const useSessionFlow = ({
     setBoardLocked(false)
   }
 
+  const handleWrongMove = (): void => {
+    setBoardLocked(true)
+    setTimeout(() => {
+      board.value?.undoLastMove()
+      showHintForExpected()
+      setBoardLocked(false)
+    }, WRONG_MOVE_UNDO_DELAY_MS)
+  }
+
   const isOpponentInFlight = (): boolean => opponentInFlight
 
   const bufferUserMove = (san: string): void => {
@@ -280,5 +304,6 @@ export const useSessionFlow = ({
     isOpponentInFlight,
     bufferUserMove,
     flushBufferedUserMove,
+    handleWrongMove,
   }
 }
