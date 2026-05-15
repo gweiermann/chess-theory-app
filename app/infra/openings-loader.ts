@@ -1,5 +1,6 @@
 import { treeFileToFamily } from '~/domain/data/family-tree-file'
 import type { Topic } from '~/domain/types'
+import { TopicNotFoundError } from '~/infra/topic-not-found-error'
 import type { OpeningsIndex, TopicIndexFile } from '~/domain/data/split-dataset'
 
 export interface OpeningsLoader {
@@ -8,6 +9,20 @@ export interface OpeningsLoader {
 }
 
 const stripTrailingSlash = (url: string): string => url.replace(/\/+$/, '')
+
+/** Static hosts often answer unknown `*.json` paths with SPA `index.html` (200 OK). Treat as missing topic. */
+const readTopicShellJson = async (topicId: string, res: Response): Promise<TopicIndexFile> => {
+  const text = await res.text()
+  const trimmed = text.trimStart()
+  if (trimmed.startsWith('<')) {
+    throw new TopicNotFoundError(topicId)
+  }
+  try {
+    return JSON.parse(text) as TopicIndexFile
+  } catch {
+    throw new Error(`Failed to parse topic index for '${topicId}'`)
+  }
+}
 
 export const createHttpOpeningsLoader = (
   baseUrl: string,
@@ -54,11 +69,14 @@ export const createHttpOpeningsLoader = (
     const promise = (async () => {
       const shellRes = await fetchImpl(topicIndexUrl(id))
       if (!shellRes.ok) {
+        if (shellRes.status === 404) {
+          throw new TopicNotFoundError(id)
+        }
         throw new Error(
           `Failed to load topic '${id}': ${shellRes.status} ${shellRes.statusText}`,
         )
       }
-      const shell = (await shellRes.json()) as TopicIndexFile
+      const shell = await readTopicShellJson(id, shellRes)
       const families = await Promise.all(
         shell.families.map(async (row) => {
           const res = await fetchImpl(familyUrl(id, row.id))
