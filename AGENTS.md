@@ -25,6 +25,19 @@
 - Always use tdd: write one failing test, make it pass, refactor, repeat
 - Always add regression tests
 
+# Dev play bridge (`/learn/play`, `import.meta.dev` only)
+
+**Priority for driving moves (follow in order):**
+
+1. **`[data-testid="dev-play-next-san"]`** — read the **expected SAN** and the caption (your move vs auto). **This is canonical;** do not derive the next move from `public/data/openings/...`, e2e helpers, or chess theory unless the hint is absent or you are debugging loaders / data shape.
+2. **`[data-testid="dev-play-command-input"]`** — when it is **your** turn, type that SAN (or another legal user move); **Enter** submits (same pipeline as the board; chess-illegal SANs are ignored / no-op).
+
+**Snapshots / MCP:** If the accessibility snapshot omits the hint, scroll the fixed bottom-left panel into view, capture a fresh snapshot, or scope the snapshot to that host before falling back to files. Opening JSON to guess moves is a last resort.
+
+**Typing quirk (IDE browser):** If Enter does not submit, type into the dev field **slowly (character-by-character)**, then press **Enter** in a separate step.
+
+- When snapshots lack usable **board** square targets, prefer the dev SAN input over guessing coordinates or using raw coordinates below.
+
 # Browser automation (IDE browser MCP)
 
 - Do not take browser screenshots unless the user explicitly asks for a screenshot in their message
