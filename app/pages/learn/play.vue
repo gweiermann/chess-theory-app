@@ -17,7 +17,7 @@ import {
   type PhaseMarkers,
   type ResetReason,
 } from '~/domain/session'
-import { isPlayHelpBlockedAtView } from '~/domain/training-turn'
+import { isPlayHelpBlockedAtView, isOpponentPly } from '~/domain/training-turn'
 import type ChessBoardComponent from '~/components/ChessBoard.vue'
 import PlayEmptyState from '~/components/play/PlayEmptyState.vue'
 import PlayTopBar from '~/components/play/PlayTopBar.vue'
@@ -27,6 +27,8 @@ import PlayBoardPanel from '~/components/play/PlayBoardPanel.vue'
 import PlayPhaseBar from '~/components/play/PlayPhaseBar.vue'
 import PlayHelpModal from '~/components/play/PlayHelpModal.vue'
 import PlayCompleteModal from '~/components/play/PlayCompleteModal.vue'
+import DevPlayCommandInput from '~/components/play/DevPlayCommandInput.vue'
+import { prepareDevPlayBoardForUserSubmit } from '~/components/play/prepareDevPlayBoardForUserSubmit'
 import BaseErrorAlert from '~/components/base/BaseErrorAlert.vue'
 import BaseLoadingState from '~/components/base/BaseLoadingState.vue'
 
@@ -37,6 +39,7 @@ const NEXT_LINE_DELAY_MS = 1500
 
 const router = useRouter()
 const goBack = () => router.back()
+const devPlayBridgeEnabled = import.meta.dev
 const { $repositories } = useNuxtApp()
 const { selection, set: setSelection, refresh: refreshSelection } = useCurrentSelection()
 /** Re-read persisted selection so /learn/play matches storage (singleton composable can be stale across navigations). */
@@ -268,6 +271,31 @@ const processUserMove = async (san: string): Promise<void> => {
   flow.showBuildingUserHint()
 }
 
+const devPlayNextMoveHint = computed(() => {
+  const s = session.value
+  const line = currentLine.value
+  if (!s || !line) return { caption: '', san: null as string | null }
+  const st = s.state.value
+  if (st.phase === 'done') return { caption: 'Line complete', san: null }
+  const san = st.expectedSan
+  if (san === null) return { caption: '', san: null }
+  if (isOpponentPly(line, st.expectedMoveIndex)) {
+    return { caption: 'Next in line (auto)', san }
+  }
+  return { caption: 'Your move (SAN)', san }
+})
+
+/** Dev-only bridge: like a board move — Chessground applies the SAN first; illegal SANs are skipped (no submit, no hint). */
+const onDevPlayCommand = (san: string): void => {
+  const prep = prepareDevPlayBoardForUserSubmit(board.value, san)
+  if (!prep.ok) return
+  void handleUserMove(san)
+}
+
+const devCommandDisabled = computed(
+  () => flowLocked.value || flow.isResetting.value || replay.isReplayMode.value,
+)
+
 const toggleHelp = (): void => {
   if (flow.hintActive.value) {
     flow.clearHintArrow()
@@ -323,6 +351,14 @@ const goToOpenings = (): void => {
             @user-move="handleUserMove"
             @board-ready="onBoardReady"
             @board-interaction="flow.clearHintArrow"
+          />
+
+          <DevPlayCommandInput
+            v-if="devPlayBridgeEnabled"
+            :disabled="devCommandDisabled"
+            :next-move-caption="devPlayNextMoveHint.caption"
+            :next-move-san="devPlayNextMoveHint.san"
+            @command="onDevPlayCommand"
           />
 
           <PlayActionBar
