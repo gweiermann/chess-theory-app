@@ -1,5 +1,6 @@
 import { ref, watch, type Ref } from 'vue'
 import type { Topic } from '~/domain/types'
+import { isTopicNotFoundError } from '~/infra/topic-not-found-error'
 
 interface UseTopicState {
   topic: Ref<Topic | null>
@@ -22,7 +23,11 @@ export const useTopic = (idRef: Ref<string | null | undefined>): UseTopicState =
       topic.value = t
       return t
     } catch (err) {
-      error.value = err as Error
+      if (isTopicNotFoundError(err)) {
+        error.value = null
+      } else {
+        error.value = err as Error
+      }
       topic.value = null
       throw err
     } finally {

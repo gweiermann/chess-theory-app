@@ -60,10 +60,12 @@ const makeFetch = (responses: Record<string, unknown>) =>
     if (body === undefined) {
       return { ok: false, status: 404, statusText: 'Not Found' } as Response
     }
+    const bodyJson = (): string => JSON.stringify(body)
     return {
       ok: true,
       status: 200,
       json: async () => body,
+      text: bodyJson,
     } as unknown as Response
   })
 
@@ -135,13 +137,42 @@ describe('createHttpOpeningsLoader', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
-  it('throws a useful error when the topic is missing', async () => {
+  it('throws TopicNotFoundError when the topic shell is missing', async () => {
     const fetchImpl = makeFetch({})
     const loader = createHttpOpeningsLoader(
       'https://example.test/data/openings',
       fetchImpl as unknown as typeof fetch,
     )
-    await expect(loader.loadTopic('missing')).rejects.toThrow(/missing/)
+    await expect(loader.loadTopic('missing')).rejects.toMatchObject({
+      name: 'TopicNotFoundError',
+      topicId: 'missing',
+    })
+  })
+
+  it('maps SPA HTML fallback (200 + HTML document) on topic shell URL to TopicNotFoundError', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith('/ghost-topic/index.json')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            `<!DOCTYPE html><html lang="en"><body><div id="__nuxt"></div></body></html>`,
+        } as Response
+      }
+      return {
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+      } as Response
+    }) as unknown as typeof fetch
+    const loader = createHttpOpeningsLoader(
+      'https://example.test/data/openings',
+      fetchImpl,
+    )
+    await expect(loader.loadTopic('ghost-topic')).rejects.toMatchObject({
+      name: 'TopicNotFoundError',
+      topicId: 'ghost-topic',
+    })
   })
 
   it('deduplicates inflight requests for the same topic', async () => {
@@ -159,6 +190,7 @@ describe('createHttpOpeningsLoader', () => {
           ok: true,
           status: 200,
           json: () => shellReady,
+          text: async () => JSON.stringify(await shellReady),
         } as unknown as Response
       }
       if (url.includes('/e4/families/italian-game.json')) {
@@ -166,6 +198,7 @@ describe('createHttpOpeningsLoader', () => {
           ok: true,
           status: 200,
           json: () => familyReady,
+          text: async () => JSON.stringify(await familyReady),
         } as unknown as Response
       }
       return { ok: false, status: 404, statusText: 'Not Found' } as Response

@@ -36,12 +36,9 @@ test('F3 corrupt progress does not crash app', async ({ page }) => {
 test('F4 unknown topic shows German warning', async ({ page }) => {
   await page.goto('/openings/not-a-real-topic-id')
   await page.waitForLoadState('load')
-  await page
-    .getByText(/Unbekanntes Thema|not valid JSON|Unexpected token/)
-    .waitFor({ state: 'visible' })
-  await expect(
-    page.getByText(/Unbekanntes Thema|not valid JSON|Unexpected token/),
-  ).toBeVisible({ timeout: E2E_MAX_WAIT_MS })
+  await expect(page.getByText(/Unbekanntes Thema/)).toBeVisible({
+    timeout: E2E_MAX_WAIT_MS,
+  })
 })
 
 test('F1 refresh mid-session keeps play usable', async ({ familyTree, learnPlay, page }) => {
