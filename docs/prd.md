@@ -166,7 +166,7 @@ Short sessions on phone; bottom navigation; leaves mid-line.
 - **D10.** **Intro:** User plays prefix to reach line start when applicable; banner can prompt playing parent opening until **Grundposition**; **Hab ich vergessen** link can jump user to parent reminder flow when parent exists.
 - **D11.** **Building (training):** Stepwise walk through user-relevant plies; hints on **new** steps until demonstrated.
 - **D12.** **Repeating:** Fixed target repetition count (**5** reps in domain) with **full board resets** between reps; banner copy and precedence are specified in **§4.4.1**.
-- **D13.** **Wrong move:** single-try feedback (undo + mistake banner), **not** a full-line reset; details and timings in **§4.4.1**.
+- **D13.** **Wrong move:** single-try feedback (undo + auto-drawn hint arrow for the expected move), **not** a full-line reset; details and timings in **§4.4.1**.
 
 **Requirements — bottom action bar**
 
@@ -193,18 +193,19 @@ This subsection is the **authoritative UX spec** for the drill screen (implement
 
 - **One contextual banner** above the board in a **fixed-height** strip so the board does not jump when copy wraps.
 - Banners use **`role="status"`** and **`aria-live="polite"`** when shown.
-- Each **banner kind** has a distinct color + icon in the UI (`hint`, `memory`, `setup-complete`, `motivation`, `mistake`).
+- Each **banner kind** has a distinct color + icon in the UI (`hint`, `memory`, `setup-complete`, `motivation`).
 
 **Ephemeral vs persistent banners**
 
-- **Ephemeral** (`hint`, `mistake`): cleared on the next **correct** user move (or when superseded); they must not hide the meaning of longer-lived banners incorrectly—see code path `clearEphemeralBanner`.
+- **Ephemeral** (`hint`): cleared on the next **correct** user move (or when superseded); they must not hide the meaning of longer-lived banners incorrectly—see code path `clearEphemeralBanner`.
 - **Persistent through subsequent moves** (`memory`, `setup-complete`, `motivation`): stay visible until the next reset or clearing logic in the flow; the user should still see “play from memory” context while replaying plies.
 
 **Wrong move (error feedback)—not a full line reset**
 
-- On wrong SAN: show **`mistake`** banner with copy **`Falscher Zug – nochmal versuchen`** (`MISTAKE_BANNER_TEXT`).
-- Board: **brief lock**, **undo the illegal try** after ~200 ms, then unlock; **no** `getResetReason` transition and **no** prefix replay for a simple wrong guess.
-- Mistake banner **auto-clears** after **1800 ms** if still showing.
+- Board: **brief lock**, **undo the illegal try** after `WRONG_MOVE_UNDO_DELAY_MS` (200 ms), **auto-draw the expected-move hint arrow** (same arrow as the **Hilfe** button), then unlock; **no** `getResetReason` transition and **no** prefix replay for a simple wrong guess.
+- The auto-hint is implementation-equivalent to pressing **Hilfe** (`showHintForExpected`) but is **not** counted as a `help_requested` activity event — only the `mistake` event is recorded, so analytics still distinguishes mistakes from voluntary help.
+- The hint arrow follows the standard ephemeral lifecycle: it is cleared on the next correct user move, on board interaction, or when superseded.
+- Earlier revisions of this section described a `mistake` text banner (`Falscher Zug – nochmal versuchen`) above the board. That banner has been **replaced** by the auto-drawn hint arrow as the wrong-move feedback surface, because seeing the correct square is more actionable than reading a generic error string.
 
 **When the full board resets** (physical reset + prefix replay + opponent chain)
 
@@ -246,7 +247,7 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 | Opponent auto-move delay | 350 ms | Pause before the app plays the opponent’s SAN. |
 | Delay before board reset after boundary | 600 ms | Beat between last move and animated return to parent base. |
 | Delay before advancing to **next line** after mastery | 1500 ms | Breathing room before new line session. |
-| Mistake banner visible | 1800 ms | Auto-dismiss mistake feedback. |
+| Wrong-move undo + auto-hint (`WRONG_MOVE_UNDO_DELAY_MS`) | 200 ms | Brief pause so the user sees their illegal try before it is undone and the expected-move arrow is drawn. |
 | Parent base after physical reset | ~220 ms (animated) | One Chessground transition from the current mess to the correct parent-prefix FEN (not via global start plus a second jump). Rare invalid data: fall back to global reset plus instant prefix replay. |
 
 **Premove / lock interaction with reset**

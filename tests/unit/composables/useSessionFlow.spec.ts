@@ -22,6 +22,7 @@ const buildBoardStub = () => {
   const reset = vi.fn()
   const setPositionFromFen = vi.fn()
   const setMoveAnimationEnabled = vi.fn()
+  const undoLastMove = vi.fn()
   const board = shallowRef({
     setLocked,
     drawHintForSan,
@@ -30,6 +31,7 @@ const buildBoardStub = () => {
     reset,
     setPositionFromFen,
     setMoveAnimationEnabled,
+    undoLastMove,
   } as unknown as InstanceType<typeof import('~/components/ChessBoard.vue')['default']>)
   return {
     board,
@@ -40,6 +42,7 @@ const buildBoardStub = () => {
     reset,
     setPositionFromFen,
     setMoveAnimationEnabled,
+    undoLastMove,
   }
 }
 
@@ -256,6 +259,67 @@ describe('useSessionFlow', () => {
       fenAfterFirstNSans(line.sanMoves, 2),
     )
     expect(playOpponentSan).not.toHaveBeenCalled()
+  })
+
+  it('handleWrongMove undoes the last move and auto-shows the expected hint', async () => {
+    vi.useFakeTimers()
+    try {
+      const { board, setLocked, undoLastMove, drawHintForSan } = buildBoardStub()
+      const flowLocked = ref(false)
+      const flow = useSessionFlow({
+        session: shallowRef(buildSession({ expectedSan: 'Bc4' })),
+        currentLine: ref(buildLine(['e4'])),
+        demonstratedSteps: ref(new Set()),
+        board,
+        flowLocked,
+        isReplayMode: computed(() => false),
+        resetReplayView: () => {},
+      })
+
+      flow.handleWrongMove()
+      expect(flowLocked.value).toBe(true)
+      expect(setLocked).toHaveBeenLastCalledWith(true)
+      expect(undoLastMove).not.toHaveBeenCalled()
+      expect(drawHintForSan).not.toHaveBeenCalled()
+
+      await vi.runAllTimersAsync()
+
+      expect(undoLastMove).toHaveBeenCalledTimes(1)
+      expect(drawHintForSan).toHaveBeenCalledWith('Bc4')
+      expect(flow.hintActive.value).toBe(true)
+      expect(flowLocked.value).toBe(false)
+      expect(setLocked).toHaveBeenLastCalledWith(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('handleWrongMove still unlocks the board when no hint can be drawn', async () => {
+    vi.useFakeTimers()
+    try {
+      const { board, setLocked, undoLastMove, drawHintForSan } = buildBoardStub()
+      const flowLocked = ref(false)
+      const flow = useSessionFlow({
+        session: shallowRef(buildSession({ expectedSan: null })),
+        currentLine: ref(buildLine(['e4'])),
+        demonstratedSteps: ref(new Set()),
+        board,
+        flowLocked,
+        isReplayMode: computed(() => false),
+        resetReplayView: () => {},
+      })
+
+      flow.handleWrongMove()
+      await vi.runAllTimersAsync()
+
+      expect(undoLastMove).toHaveBeenCalledTimes(1)
+      expect(drawHintForSan).not.toHaveBeenCalled()
+      expect(flow.hintActive.value).toBe(false)
+      expect(flowLocked.value).toBe(false)
+      expect(setLocked).toHaveBeenLastCalledWith(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('isOpponentInFlight is false at rest', () => {

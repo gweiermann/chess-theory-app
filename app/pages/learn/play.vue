@@ -214,11 +214,7 @@ const processUserMove = async (san: string): Promise<void> => {
   const result = await s.submit(san)
 
   if (result.result === 'wrong') {
-    flow.setBoardLocked(true)
-    setTimeout(() => {
-      board.value?.undoLastMove()
-      flow.setBoardLocked(false)
-    }, 200)
+    flow.handleWrongMove()
     return
   }
 
