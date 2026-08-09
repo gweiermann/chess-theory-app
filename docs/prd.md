@@ -282,7 +282,7 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 
 ### 4.7 Journey G — Random Opening Trainer (Zufallsmodus)
 
-**Flow:** `/learn` → Zufallsmodus card → `/learn/practice`. A round draws one random **already-mastered** line — the round's **target line** — from the learned pool across **all** topics; the page calls it out at the top as **Ziel: \<name\>**. The user plays the user-colored side move-by-move at their own pace while the computer auto-plays its own side along the target line. No mastery/progress is ever written.
+**Flow:** `/learn` → Zufallsmodus card → `/learn/practice`. A round draws one random **already-mastered** line — the round's **target line** — from the learned pool across **all** topics; the page calls it out at the top as **Ziel: \<name\>**. The user plays the user-colored side move-by-move at their own pace while the computer auto-plays its own side along the target line. No mastery/progress is ever written. The whole page stays on one mobile screen: the square board is capped to the smaller of the available width and height (a `ResizeObserver` on the board region re-measures it whenever the surrounding chrome changes, e.g. a hint row or the round-complete continue bar), so it never causes vertical scrolling.
 
 **Learned pool & tree**
 

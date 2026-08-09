@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMasteredPool } from '~/composables/useMasteredPool'
 import { useRandomPractice } from '~/composables/useRandomPractice'
@@ -31,6 +31,34 @@ const {
   rehydrateBoard,
 } = useRandomPractice()
 const devPlayBridgeEnabled = import.meta.dev || import.meta.env.VITE_E2E === '1'
+
+// The board is square and sized by width. Cap it to the available height so
+// the whole practice UI stays on one mobile screen (no vertical scroll).
+let resizeObserver: ResizeObserver | null = null
+const boardAreaRef = ref<HTMLElement | null>(null)
+const boardSizePx = ref(0)
+
+const measureBoard = (): void => {
+  const el = boardAreaRef.value
+  if (!el) return
+  const side = Math.max(0, Math.floor(Math.min(el.clientWidth, el.clientHeight)))
+  if (side !== boardSizePx.value) boardSizePx.value = side
+}
+
+const startObservingBoard = (): void => {
+  resizeObserver?.disconnect()
+  resizeObserver = new ResizeObserver(measureBoard)
+  if (boardAreaRef.value) {
+    resizeObserver.observe(boardAreaRef.value)
+    measureBoard()
+  }
+}
+
+// The board region only renders once a session exists (after the async pool
+// load). Start observing once it is attached; the observer keeps tracking
+// height changes (e.g. the continue bar replacing the action row).
+watch(boardAreaRef, startObservingBoard, { flush: 'post' })
+onBeforeUnmount(() => resizeObserver?.disconnect())
 
 const hasMastered = computed(() => (lines.value?.length ?? 0) > 0)
 const userSide = computed(() => session.value?.userSide ?? 'white')
@@ -79,7 +107,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col">
+  <div class="flex h-dvh flex-col">
     <div
       class="shrink-0 border-b border-(--ui-border)/50 bg-(--ui-bg)"
       data-testid="practice-top-bar"
@@ -145,12 +173,16 @@ onMounted(async () => {
     <template v-else-if="session">
       <PlayPhaseBar :label="phaseLabel" />
 
-      <PlayBoardPanel
-        :orientation="userSide"
-        :player-color="userSide"
-        @user-move="handleUserMove"
-        @board-ready="registerBoard"
-      />
+      <div ref="boardAreaRef" class="board-fit relative flex min-h-0 flex-1 items-center justify-center">
+        <div class="shrink-0" :style="{ width: `${boardSizePx}px` }">
+          <PlayBoardPanel
+            :orientation="userSide"
+            :player-color="userSide"
+            @user-move="handleUserMove"
+            @board-ready="registerBoard"
+          />
+        </div>
+      </div>
 
       <div class="shrink-0 px-4 py-2 text-center">
         <FeedbackBanner :feedback="feedback" />
