@@ -12,12 +12,14 @@ interface Props {
   mistakes: number
   helpUsed: boolean
   bonus: number
+  /** Whether the round followed the target line without mistakes (bonus tripped). */
+  targetMet?: boolean
   totalScore: number
   streak: number
   buttonLabel?: string
 }
 
-withDefaults(defineProps<Props>(), { buttonLabel: 'Weiter' })
+withDefaults(defineProps<Props>(), { buttonLabel: 'Weiter', targetMet: false })
 
 defineEmits<{ (e: 'continue'): void }>()
 </script>
@@ -31,6 +33,13 @@ defineEmits<{ (e: 'continue'): void }>()
     <div class="mx-auto flex max-w-sm flex-col gap-3 px-4 py-4">
       <p class="text-center text-base font-semibold" data-testid="continue-heading">
         Runde {{ roundNumber }} abgeschlossen
+      </p>
+      <p
+        v-if="targetMet"
+        class="-mt-1 text-center text-sm font-medium text-(--ui-primary)"
+        data-testid="continue-target-met"
+      >
+        Ziel-Linie ohne Fehler gemeistert
       </p>
       <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
         <div class="flex justify-between gap-2">

@@ -14,7 +14,7 @@ import {
   type RandomSessionState,
 } from '~/domain/random-trainer/random-session'
 import { standardStartFen } from '~/domain/prefix-fen'
-import type { Line, Side } from '~/domain/types'
+import type { Line } from '~/domain/types'
 
 type BoardRef = Ref<InstanceType<typeof ChessBoardComponent> | null>
 
@@ -48,11 +48,11 @@ let masteredLines: readonly Line[] = []
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Pick the user's side for a round from a random mastered line's userSide. */
-const pickRoundSide = (rng: () => number): Side => {
-  if (masteredLines.length === 0) return 'white'
+/** Pick a random mastered line to make this round's target line (drives the user's side + the "Ziel" label). */
+const pickRoundLine = (rng: () => number): Line | null => {
+  if (masteredLines.length === 0) return null
   const idx = Math.min(masteredLines.length - 1, Math.floor(rng() * masteredLines.length))
-  return masteredLines[idx]?.userSide ?? 'white'
+  return masteredLines[idx] ?? null
 }
 
 export const useRandomPractice = (): RandomPractice => {
@@ -131,9 +131,10 @@ export const useRandomPractice = (): RandomPractice => {
     }
     const t = buildLearnedTree(lines)
     tree.value = t
-    const userSide = pickRoundSide(rng)
+    const line = pickRoundLine(rng)
+    if (!line) return
     beginNewRound(
-      startRound({ tree: t, userSide, rng }),
+      startRound({ tree: t, line }),
       rng,
     )
   }
@@ -142,17 +143,17 @@ export const useRandomPractice = (): RandomPractice => {
     const s = session.value
     const t = tree.value
     if (!s || !t) return
-    const userSide = pickRoundSide(rng)
+    const line = pickRoundLine(rng)
+    if (!line) return
     beginNewRound(
       startRound({
         tree: t,
-        userSide,
+        line,
         from: {
           score: s.score,
           streak: s.streak,
           roundNumber: s.roundNumber,
         },
-        rng,
       }),
       rng,
     )

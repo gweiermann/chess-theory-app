@@ -40,6 +40,14 @@ export class LearnPracticePage {
     return this.page.getByTestId('practice-streak')
   }
 
+  targetLine(): Locator {
+    return this.page.getByTestId('practice-target-line')
+  }
+
+  continueTargetMet(): Locator {
+    return this.page.getByTestId('continue-target-met')
+  }
+
   round(): Locator {
     return this.page.getByTestId('practice-round')
   }

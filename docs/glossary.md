@@ -40,11 +40,12 @@ A legacy **name tree** built from parsed `fullName` was a separate idea and is *
 | **Reps** | Count of **repetitions** recorded for a line. |
 | **Learned pool** | All lines with status **mastered** across **all** topics. The Zufallsmodus draws its rounds from this pool (read-only: it never writes progress). Built by `collectMasteredLines`. |
 | **Continuation** | One SAN edge in the learned position tree. Every continuation leaving a node is a **valid learned continuation**, so a position may have several correct answers. |
-| **Round (Zufallsmodus)** | One random walk through a mastered line: the computer auto-plays its side and the user plays theirs, ending only at a **terminal** node (no continuation left). |
-| **Continue bar** | The reusable mode-agnostic round-completion card (default button **Weiter**) that starts the next round manually — no auto-advance. Reusable by classic `/learn/play`. |
-| **Hilfe (practice)** | Reveals one valid continuation for the current turn. The helped move earns **0 points** and resets the streak; it does not disqualify the perfect-round bonus. |
-| **Score / Streak** | Practice-session totals: **+1** per correct no-help move, streak **+1** per streak move (reset on help or a mistake); **+5** bonus for a round finished with **0 mistakes**. |
+**Round (Zufallsmodus)** | One random walk built around a randomly drawn **target line**: the computer auto-plays its side along the target while the user plays theirs, ending at a **terminal** node or when the target line is completed. |
+**Target line (Ziel)** | The mastered line chosen at random each round and called out at the top (**Ziel: \<name\>**) so the user knows which variation the app intends. While the user stays on it the computer plays that line’s own side; a valid learned move off the target is accepted but drops the round off target (no bonus). |
+**Continue bar** | The reusable mode-agnostic round-completion card (default button **Weiter**) that starts the next round manually — no auto-advance. Reusable by classic `/learn/play`. |
+**Hilfe (practice)** | Reveals one valid continuation for the current turn. The helped move earns **0 points** and resets the streak; it does not disqualify the target-line bonus. |
+**Score / Streak** | Practice-session totals: **+1** per correct no-help move, streak **+1** per streak move (reset on help or a mistake); **+5** bonus (`targetMet`) when the round follows the target line from the start with **0 mistakes**. |
 
 ---
 
-*Last updated: added Zufallsmodus terms (learned pool, round, continuation, continue bar, score/streak).*
+*Last updated: added target line (Ziel) term; refined round/bonus semantics.*

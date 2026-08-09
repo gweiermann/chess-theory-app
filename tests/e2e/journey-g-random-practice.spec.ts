@@ -53,12 +53,17 @@ test('G3 clean round scores +1 per move and +5 bonus, continue advances', async 
   await learnPractice.openViaLearnHub()
   await expect(learnPractice.score()).toHaveText('0')
 
+  // the top calls out the randomly chosen target line ("Ziel: …")
+  await expect(learnPractice.targetLine()).toBeVisible()
+  await expect(learnPractice.targetLine()).toHaveText(/Ziel:\s*\S+/)
+
   await playCleanRound(learnPractice)
 
   // computer plays Bc5 and the round completes with no mistakes → +5 bonus
   await expect(learnPractice.continueBar()).toBeVisible({ timeout: E2E_MAX_WAIT_MS })
   await expect(learnPractice.continuePoints()).toHaveText('7') // 2 moves + 5 bonus
   await expect(learnPractice.continueMistakes()).toHaveText('0')
+  await expect(learnPractice.continueTargetMet()).toBeVisible() // followed the target
   await expect(learnPractice.score()).toHaveText('7')
 
   // manual continue starts a fresh round, carrying the score
@@ -91,5 +96,6 @@ test('G4 a wrong move does not end the round and shows all continuations', async
   await expect(learnPractice.continueBar()).toBeVisible({ timeout: E2E_MAX_WAIT_MS })
   await expect(learnPractice.continuePoints()).toHaveText('2') // 2 moves, no bonus
   await expect(learnPractice.continueMistakes()).toHaveText('1')
+  await expect(learnPractice.continueTargetMet()).toHaveCount(0) // mistake → no target bonus
 })
 })

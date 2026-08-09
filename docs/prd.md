@@ -282,7 +282,7 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 
 ### 4.7 Journey G — Random Opening Trainer (Zufallsmodus)
 
-**Flow:** `/learn` → Zufallsmodus card → `/learn/practice`. A round draws one random **already-mastered** line from the learned pool across **all** topics; the user plays the user-colored side move-by-move at their own pace while the computer auto-plays its own side (picking a random learned continuation). No mastery/progress is ever written.
+**Flow:** `/learn` → Zufallsmodus card → `/learn/practice`. A round draws one random **already-mastered** line — the round's **target line** — from the learned pool across **all** topics; the page calls it out at the top as **Ziel: \<name\>**. The user plays the user-colored side move-by-move at their own pace while the computer auto-plays its own side along the target line. No mastery/progress is ever written.
 
 **Learned pool & tree**
 
@@ -292,8 +292,8 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 
 **Round lifecycle**
 
-- **G4.** Each round randomly draws a line and the user’s side; if it is the computer’s turn first, the computer auto-plays its plies (one random learned continuation at a time, ~350 ms) until it is the user’s side to move.
-- **G5.** A round ends **only** at a terminal node (no learned continuation left). A wrong move does **not** end the round.
+- **G4.** Each round randomly draws a **target line** (which determines the user’s side). While the user stays on it, the computer plays that line’s own side (one move at a time, ~350 ms); if it is the computer’s turn first it auto-plays its plies until the user’s side is to move.
+- **G5.** A round ends at a terminal node (no learned continuation left) **or** when the user completes the target line on-target. A wrong move does **not** end the round.
 - **G6.** After the round completes, a **continue bar** shows the round result (moves, mistakes, help used, bonus, round points) and a default **“Weiter”** button that starts the next round manually (no auto-advance). Totals (score, streak, round number) carry across rounds.
 
 **Scoring, streak, and hints**
@@ -301,7 +301,13 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 - **G7.** Correct move without Hilfe: **+1 point**, streak **+1**.
 - **G8.** **Hilfe** (reveal one continuation): that move earns **0 points** and resets the streak; it does **not** disqualify the perfect-round bonus.
 - **G9.** Wrong move: **0 points**, streak resets, counts as a mistake; the banner lists **all** valid continuations (“Möglich: …”) and the user must play one to continue.
-- **G10.** Round finished with **0 mistakes**: **+5 bonus**.
+- **G10.** **+5 bonus** (`targetMet`) is awarded only when the round completes having followed the target line from the start **and** with **0 mistakes**. Help does **not** disqualify it.
+
+**Target line (Ziel)**
+
+- **G13.** The top of the practice page calls out the chosen target line as **Ziel: \<name\>** so the user knows which line the app intends — even when playing White (no "blank page" situation).
+- **G14.** A valid learned move that leaves the target line is still accepted, but the round drops off target (the computer then plays random learned moves) and forfeits the bonus.
+- **G15.** If the target line is a strict prefix of a longer variation in the merged tree, completing it still ends the round and awards the bonus (the user is not forced to continue a line they finished).
 
 **UI / reuse**
 

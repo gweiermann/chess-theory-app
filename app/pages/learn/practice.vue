@@ -107,6 +107,13 @@ onMounted(async () => {
           {{ session?.streak ?? 0 }}
         </span>
       </p>
+      <p
+        v-if="session?.targetName"
+        class="border-t border-(--ui-border)/40 bg-(--ui-primary)/8 py-1.5 text-center text-sm font-medium text-(--ui-primary)"
+        data-testid="practice-target-line"
+      >
+        Ziel: {{ session.targetName }}
+      </p>
     </div>
 
     <div v-if="loading && !lines" class="flex flex-1 items-center justify-center p-6">
@@ -163,6 +170,7 @@ onMounted(async () => {
           :mistakes="session.lastRound.mistakes"
           :help-used="session.lastRound.helpUsed"
           :bonus="session.lastRound.bonus"
+          :target-met="session.lastRound.targetMet"
           :total-score="session.score"
           :streak="session.streak"
           @continue="continueToNextRound"
