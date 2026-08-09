@@ -26,9 +26,10 @@ test('A3 Spielen navigates to /learn/play', async ({ learnHub, page }) => {
 
 test('A4 disabled modes show coming-soon copy', async ({ learnHub }) => {
   await learnHub.goto()
-  await expect(learnHub.modeCard('random')).toBeDisabled()
+  // Random Opening Trainer is live; only error-trainer stays as coming-soon.
+  await expect(learnHub.modeCard('random')).toBeEnabled()
   await expect(learnHub.modeCard('error-trainer')).toBeDisabled()
-  await expect(learnHub.page.getByText('Demnächst')).toHaveCount(2)
+  await expect(learnHub.page.getByText('Demnächst')).toHaveCount(1)
 })
 
 test('§3.3 bottom navigation switches tabs', async ({ appLayout, page }) => {

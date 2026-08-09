@@ -39,7 +39,7 @@ const NEXT_LINE_DELAY_MS = 1500
 
 const router = useRouter()
 const goBack = () => router.back()
-const devPlayBridgeEnabled = import.meta.dev
+const devPlayBridgeEnabled = import.meta.dev || import.meta.env.VITE_E2E === '1'
 const { $repositories } = useNuxtApp()
 const { selection, set: setSelection, refresh: refreshSelection } = useCurrentSelection()
 /** Re-read persisted selection so /learn/play matches storage (singleton composable can be stale across navigations). */

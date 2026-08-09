@@ -17,7 +17,9 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'pnpm generate && npx serve -l 3000 .output/public',
+    // VITE_E2E enables the dev-play bridge (a test seam, not user-visible) so
+    // the canonical move hint is available in the SSG build used by Playwright.
+    command: 'VITE_E2E=1 pnpm generate && npx serve -l 3000 .output/public',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 240_000,

@@ -4,6 +4,7 @@ import { AppLayout } from '../pages/app-layout.page'
 import { FamilyTreePage } from '../pages/family-tree.page'
 import { LearnHubPage } from '../pages/learn-hub.page'
 import { LearnPlayPage } from '../pages/learn-play.page'
+import { LearnPracticePage } from '../pages/learn-practice.page'
 import { OpeningsIndexPage } from '../pages/openings-index.page'
 import { OpeningsTopicPage } from '../pages/openings-topic.page'
 import { ProfilePage } from '../pages/profile.page'
@@ -13,6 +14,7 @@ type ChessAppFixtures = {
   appLayout: AppLayout
   learnHub: LearnHubPage
   learnPlay: LearnPlayPage
+  learnPractice: LearnPracticePage
   openingsIndex: OpeningsIndexPage
   openingsTopic: OpeningsTopicPage
   familyTree: FamilyTreePage
@@ -51,6 +53,9 @@ export const test = base.extend<ChessAppFixtures>({
   },
   learnPlay: async ({ page }, use) => {
     await use(new LearnPlayPage(page))
+  },
+  learnPractice: async ({ page }, use) => {
+    await use(new LearnPracticePage(page))
   },
   openingsIndex: async ({ page }, use) => {
     await use(new OpeningsIndexPage(page))

@@ -38,7 +38,13 @@ A legacy **name tree** built from parsed `fullName` was a separate idea and is *
 | **Repetition phase** | Part of the session where the line (or its steps) is practiced in a **repetition** loop: reps, resets, and completion criteria, after the intro and training work as needed. |
 | **Progress** | Per-line **new** / **in progress** / **mastered** (and **reps**), stored for spaced practice. |
 | **Reps** | Count of **repetitions** recorded for a line. |
+| **Learned pool** | All lines with status **mastered** across **all** topics. The Zufallsmodus draws its rounds from this pool (read-only: it never writes progress). Built by `collectMasteredLines`. |
+| **Continuation** | One SAN edge in the learned position tree. Every continuation leaving a node is a **valid learned continuation**, so a position may have several correct answers. |
+| **Round (Zufallsmodus)** | One random walk through a mastered line: the computer auto-plays its side and the user plays theirs, ending only at a **terminal** node (no continuation left). |
+| **Continue bar** | The reusable mode-agnostic round-completion card (default button **Weiter**) that starts the next round manually — no auto-advance. Reusable by classic `/learn/play`. |
+| **Hilfe (practice)** | Reveals one valid continuation for the current turn. The helped move earns **0 points** and resets the streak; it does not disqualify the perfect-round bonus. |
+| **Score / Streak** | Practice-session totals: **+1** per correct no-help move, streak **+1** per streak move (reset on help or a mistake); **+5** bonus for a round finished with **0 mistakes**. |
 
 ---
 
-*Last updated: parent/child defined by strict `sanMoves` prefix; legacy name-tree navigation is being removed.*
+*Last updated: added Zufallsmodus terms (learned pool, round, continuation, continue bar, score/streak).*

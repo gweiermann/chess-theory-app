@@ -28,9 +28,8 @@ const modes: Mode[] = [
     id: 'random',
     icon: 'i-lucide-shuffle',
     title: 'Zufallsmodus',
-    description: 'Teste dein Gedächtnis mit zufällig ausgewählten Eröffnungen aus allen Themen.',
-    disabled: true,
-    badge: 'Demnächst',
+    description: 'Teste dein Gedächtnis mit zufällig ausgewählten gelernten Eröffnungen aus allen Themen.',
+    disabled: false,
   },
   {
     id: 'error-trainer',
@@ -45,7 +44,8 @@ const modes: Mode[] = [
 const selectedMode = ref<LearningMode>('openings')
 
 const play = (): void => {
-  void router.push('/learn/play')
+  const route = selectedMode.value === 'random' ? '/learn/practice' : '/learn/play'
+  void router.push(route)
 }
 </script>
 

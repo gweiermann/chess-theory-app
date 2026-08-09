@@ -190,6 +190,31 @@ const drawHintForSan = (san: string): boolean => {
   return true
 }
 
+const drawHintsForSans = (sans: readonly string[]): boolean => {
+  const api = apiRef.value
+  if (!api) return false
+  const shapes: DrawShape[] = []
+  for (const san of sans) {
+    const squares = resolveSanToSquares(api.getFen(), san)
+    if (squares) {
+      shapes.push({ orig: squares.from, dest: squares.to, brush: 'paleBlue' })
+    }
+  }
+  if (shapes.length === 0) return false
+  // Same fresh-frame scheduling as drawHintForSan so arrows appear on mount.
+  api.setShapes([])
+  const draw = () => {
+    api.setShapes(shapes)
+    refreshBounds()
+  }
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(draw)
+  } else {
+    draw()
+  }
+  return true
+}
+
 const clearHints = (): void => {
   apiRef.value?.setShapes([])
   refreshBounds()
@@ -204,6 +229,7 @@ defineExpose({
   setMoveAnimationEnabled,
   undoLastMove,
   drawHintForSan,
+  drawHintsForSans,
   clearHints,
   refreshBounds,
 })

@@ -25,7 +25,11 @@ const tone = computed(() => {
     aria-live="polite"
   >
     <template v-if="feedback.kind === 'wrong'">
-      Falsch. Erwartet: <span class="font-mono">{{ feedback.expected }}</span>
+      Falsch. <template v-if="feedback.expected">Erwartet: <span class="font-mono">{{ feedback.expected }}</span></template>
+      <template v-else-if="feedback.continuations?.length">
+        Möglich:
+        <span class="font-mono">{{ feedback.continuations.join(', ') }}</span>
+      </template>
     </template>
     <template v-else>
       Korrekt: <span class="font-mono">{{ feedback.played }}</span>

@@ -64,6 +64,7 @@ Short sessions on phone; bottom navigation; leaves mid-line.
 | `/` | Redirects to `/learn` (default entry). |
 | `/learn` | Learning hub: mode selection + CTA to start play. |
 | `/learn/play` | Full-screen training session (play layout, no bottom tab bar). |
+| `/learn/practice` | Random Opening Trainer (Zufallsmodus): random mastered lines across topics. |
 | `/openings` | Topic grid (e4, d4, …): counts + family-level mastery progress. |
 | `/openings/:topic` | Topic detail: search, sections (Eröffnungen / Verteidigungen / Gambits), families, “Weiter lernen,” per-family Üben. |
 | `/openings/:topic/family/:family` | Family tree: breadcrumbs, `?path=` for subtree, base line card, child navigation, practice actions. |
@@ -93,8 +94,8 @@ Short sessions on phone; bottom navigation; leaves mid-line.
 **Requirements**
 
 - **A1.** Home redirect must send the user to **Lernen**, not a dead end.
-- **A2.** Lernen page shows a **mode list** with exactly one active mode today: *Eröffnungen lernen*; other modes visible but **disabled** with “Demnächst” badge.
-- **A3.** Primary CTA **Spielen** navigates to `/learn/play` when the user is ready to drill (same mode as selected).
+- **A2.** Lernen page shows a **mode list** with two active modes: *Eröffnungen lernen* and *Zufallsmodus*; the remaining *Fehlertrainer* is visible but **disabled** with a “Demnächst” badge.
+- **A3.** Primary CTA **Spielen** starts the selected mode: *Eröffnungen lernen* → `/learn/play`; *Zufallsmodus* → `/learn/practice`.
 - **A4.** Copy explains that practice uses the **Eröffnungsbibliothek** (built-in dataset).
 
 **Observed UX risk (QA):** On small viewports, the fixed bottom nav can **intercept taps** intended for the primary CTA; acceptance should require that primary actions are reachable (scroll affordance, layout, or z-index).
@@ -279,6 +280,36 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 
 ---
 
+### 4.7 Journey G — Random Opening Trainer (Zufallsmodus)
+
+**Flow:** `/learn` → Zufallsmodus card → `/learn/practice`. A round draws one random **already-mastered** line from the learned pool across **all** topics; the user plays the user-colored side move-by-move at their own pace while the computer auto-plays its own side (picking a random learned continuation). No mastery/progress is ever written.
+
+**Learned pool & tree**
+
+- **G1.** The learned pool is every line with status `mastered` in `chess-theory:v1:progress`, across all topics (**not** the current topic selection).
+- **G2.** Lines are merged into a SAN-keyed position tree (transpositions merge); a node’s **valid continuations** are all its learned edges. Multiple continuations are therefore all correct.
+- **G3.** Corrupt/illegal lines are skipped silently; if the pool is empty the page shows the empty state “Noch keine gelernten Eröffnungen” with a back action, never a blank screen.
+
+**Round lifecycle**
+
+- **G4.** Each round randomly draws a line and the user’s side; if it is the computer’s turn first, the computer auto-plays its plies (one random learned continuation at a time, ~350 ms) until it is the user’s side to move.
+- **G5.** A round ends **only** at a terminal node (no learned continuation left). A wrong move does **not** end the round.
+- **G6.** After the round completes, a **continue bar** shows the round result (moves, mistakes, help used, bonus, round points) and a default **“Weiter”** button that starts the next round manually (no auto-advance). Totals (score, streak, round number) carry across rounds.
+
+**Scoring, streak, and hints**
+
+- **G7.** Correct move without Hilfe: **+1 point**, streak **+1**.
+- **G8.** **Hilfe** (reveal one continuation): that move earns **0 points** and resets the streak; it does **not** disqualify the perfect-round bonus.
+- **G9.** Wrong move: **0 points**, streak resets, counts as a mistake; the banner lists **all** valid continuations (“Möglich: …”) and the user must play one to continue.
+- **G10.** Round finished with **0 mistakes**: **+5 bonus**.
+
+**UI / reuse**
+
+- **G11.** The continue bar and round-completion state are **mode-agnostic** (`PlayContinueBar` + a `round-complete` phase in the engine) so classic `/learn/play` can reuse them later.
+- **G12.** Development only: `/learn/practice` mounts the same dev-play bridge as `/learn/play` (`dev-play-next-san` shows the joined valid continuations).
+
+---
+
 ## 5. Data and domain rules (requirements on content)
 
 ### 5.1 Hierarchy
@@ -311,12 +342,12 @@ Parent/child is defined by **strict prefix** of full `sanMoves` (see `docs/gloss
 
 - Writes must be **debounced or batched** where high-frequency (avoid main-thread jank on mobile)—verify per implementation.
 - Never store secrets; these keys are **device-local**.
+- **Zufallsmodus** (`/learn/practice`) is read-only: it never writes selection, progress, or settings.
 
 ---
 
 ## 7. Backlog / future requirements (explicitly not done)
 
-- **Zufallsmodus:** random lines across topics (UI placeholder exists).
 - **Fehlertrainer:** prioritize historically mistaken moves (UI placeholder exists).
 - Optional: **cloud backup**, **account**, **cross-device sync**.
 - Optional: **PGN export** of mastered repertoire.
@@ -330,7 +361,7 @@ Parent/child is defined by **strict prefix** of full `sanMoves` (see `docs/gloss
 - **N2. Accessibility:** Phase/banners use polite live regions; icon buttons have **aria-label** where text is visually secondary.
 - **N3. Internationalization:** Today **German-only**; if English ships later, all user-visible strings must go through i18n layer.
 - **N4. SEO / sharing:** Play session is client state; shared URLs should remain meaningful for **openings routes** (`path` query).
-- **N5. Testing:** Critical flows covered by unit/integration tests (`vitest`) and e2e (`playwright`) per repo conventions. UI atoms and feature components ship with co-located unit tests against `@vue/test-utils`; reusable composables (`useTopicSearch`, etc.) get their own spec. In **development only**, `/learn/play` mounts a **dev play** bridge (visually hidden, not shown to learners): `data-testid="dev-play-command-input"` submits a SAN via keyboard (Enter) through the same Chessground-then-`submit` pipeline as board moves, and `data-testid="dev-play-next-san"` mirrors the session’s expected SAN (your move vs auto) so automation need not read opening JSON. Chess-illegal SANs are ignored (no session update), like an impossible board interaction.
+- **N5. Testing:** Critical flows covered by unit/integration tests (`vitest`) and e2e (`playwright`) per repo conventions. UI atoms and feature components ship with co-located unit tests against `@vue/test-utils`; reusable composables (`useTopicSearch`, etc.) get their own spec. In **development only**, `/learn/play` mounts a **dev play** bridge (visually hidden, not shown to learners): `data-testid="dev-play-command-input"` submits a SAN via keyboard (Enter) through the same Chessground-then-`submit` pipeline as board moves, and `data-testid="dev-play-next-san"` mirrors the session’s expected SAN (your move vs auto) so automation need not read opening JSON. Chess-illegal SANs are ignored (no session update), like an impossible board interaction. The same bridge (enabled in e2e builds via `VITE_E2E=1`) drives `/learn/practice`, where `dev-play-next-san` exposes the joined valid continuations for the random sessions. Random-trainer domain logic (`learned-tree`, `random-session`, `mastered-pool`) is unit-tested under `tests/unit/domain/random-trainer/`, and the round flow is covered by e2e journey G.
 - **N6. Component workshop:** Reusable UI components are developed and reviewed in **Storybook** (`pnpm storybook`). Each component ships with co-located `*.stories.ts` covering its meaningful states. The static bundle (`pnpm build-storybook`) doubles as a design reference.
   - *Note:* `@nuxtjs/storybook` 9.0.1 is incompatible with Nuxt 4 (transitive `@nuxt/vite-builder@3.x` clashes with Nuxt 4's built-in vite and breaks `@nuxt/ui` resolution). It is intentionally **not registered** as a Nuxt module in `nuxt.config.ts`. Storybook is invoked as a standalone CLI; the `@storybook-vue/nuxt` framework still works for stories without the module wrapper.
 
@@ -354,5 +385,6 @@ Parent/child is defined by **strict prefix** of full `sanMoves` (see `docs/gloss
 - Play composables: `useSessionFlow` (board lock, hint, opponent auto-play, premove buffer), `useReplayControls` (move-history step + view), `useScopedProgress` (mastery counter scoped to focus), `usePlayHeadings` (page title + phase label), `useLineLifecycle` (start/next/restart/skip/previous + mastery finalisation).
 - Page composables: `useFamilyTree`, `useFamilyNavigation`, `useLockedActions`, `useTopicSearch`.
 - Pure-domain helpers: `app/domain/line-setup.ts` (`computeLineSetup`).
+- Random Opening Trainer: `app/domain/random-trainer/{learned-tree,random-session,mastered-pool}.ts`, `app/composables/useRandomPractice.ts`, `app/composables/useMasteredPool.ts`, `app/components/play/PlayContinueBar.vue`, `app/pages/learn/practice.vue`.
 
 This PRD describes **observed and code-backed behavior** as of the revision date; when implementation diverges, either update the PRD or treat the mismatch as a defect, per team policy.
