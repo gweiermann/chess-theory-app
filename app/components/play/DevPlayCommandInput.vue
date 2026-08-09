@@ -83,21 +83,20 @@ const onKeydown = (e: KeyboardEvent): void => {
 
 <style scoped>
 /*
- * Dev-only: small bottom-left panel — input stays a real target for IDE browser
- * automation; hint shows the session’s expected SAN so agents need not grep JSON.
+ * Dev-only: off-screen so learners never see the bridge; controls stay in the DOM
+ * for IDE browser automation (data-testid + expected SAN hint).
  */
 .dev-play-command-host {
   position: fixed;
-  bottom: env(safe-area-inset-bottom, 0);
-  left: env(safe-area-inset-left, 0);
-  z-index: 30;
+  top: 0;
+  left: -10000px;
+  z-index: -1;
   pointer-events: auto;
-  max-width: min(22rem, calc(100vw - 1rem));
-  padding: 0.35rem 0.5rem;
-  border-radius: 0.375rem;
-  background: color-mix(in srgb, var(--ui-bg-elevated, #1a1a1a) 92%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ui-border, #333) 80%, transparent);
-  box-shadow: 0 4px 14px color-mix(in srgb, #000 35%, transparent);
+  max-width: 22rem;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  overflow: hidden;
 }
 
 .dev-play-command-row {
