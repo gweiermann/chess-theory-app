@@ -28,6 +28,14 @@ const apiRef = ref<BoardApi | null>(null)
 const pendingTimeouts = new Set<ReturnType<typeof setTimeout>>()
 let suppressEmitForSan: string | null = null
 
+/** Dev/e2e seam: mirror the live board FEN so tests can assert board↔session sync. */
+const showDevFen = import.meta.dev || import.meta.env.VITE_E2E === '1'
+const devFen = ref('')
+const syncDevFen = (): void => {
+  if (!showDevFen) return
+  devFen.value = apiRef.value?.getFen() ?? ''
+}
+
 /*
  * vue3-chessboard captures the boardConfig OBJECT REFERENCE at mount time
  * and re-applies it on every `resetBoard()` (see BoardApi#resetBoard). If
@@ -64,6 +72,7 @@ const boardConfig = {
 const handleBoardCreated = (api: BoardApi): void => {
   apiRef.value = api
   emit('ready', api)
+  syncDevFen()
 }
 
 const handleMove = (move: Move): void => {
@@ -72,6 +81,7 @@ const handleMove = (move: Move): void => {
     return
   }
   emit('user-move', move.san, move)
+  syncDevFen()
 }
 
 const playOpponentSan = (san: string): boolean => {
@@ -80,6 +90,7 @@ const playOpponentSan = (san: string): boolean => {
   suppressEmitForSan = san
   const ok = api.move(san)
   if (!ok) suppressEmitForSan = null
+  syncDevFen()
   return ok
 }
 
@@ -105,9 +116,20 @@ const reset = (): void => {
   apiRef.value?.resetBoard()
 }
 
-/** Full position load (chess.js + Chessground). Animates from the current layout when animation is enabled. */
-const setPositionFromFen = (fen: string): void => {
-  apiRef.value?.setPosition(fen)
+/**
+ * Full position load (chess.js + Chessground).
+ *
+ * Returns whether the board changed. Callers that must repair a stale board
+ * before an animated reply can request a snap, yield a frame, then animate
+ * only the reply.
+ */
+const setPositionFromFen = (fen: string, animate = true): boolean => {
+  const api = apiRef.value
+  if (!api || api.getFen() === fen) return false
+  if (!animate) setMoveAnimationEnabled(false)
+  api.setPosition(fen)
+  syncDevFen()
+  return true
 }
 
 const setPlayerColor = (color: Side): void => {
@@ -135,6 +157,7 @@ const setLocked = (locked: boolean): void => {
 
 const undoLastMove = (): void => {
   apiRef.value?.undoLastMove()
+  syncDevFen()
 }
 
 const resolveSanToSquares = (
@@ -269,6 +292,7 @@ onBeforeUnmount(() => {
       @board-created="handleBoardCreated"
       @move="handleMove"
     />
+    <span v-if="showDevFen" data-testid="dev-board-fen" class="hidden">{{ devFen }}</span>
   </div>
 </template>
 

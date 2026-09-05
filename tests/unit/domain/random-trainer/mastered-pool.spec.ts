@@ -53,4 +53,18 @@ describe('collectMasteredLines', () => {
       collectMasteredLines(topics, { t1: [{ lineId: 'a', status: 'new', reps: 0 }] }),
     ).toEqual([])
   })
+
+  it('carries the family and topic context of each mastered line', () => {
+    const topics = [topic('t1', [line('a')])]
+    const result = collectMasteredLines(topics, {
+      t1: [{ lineId: 'a', status: 'mastered', reps: 3 }],
+    })
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      id: 'a',
+      topicId: 't1',
+      familyId: 't1-f',
+      familyName: 't1',
+    })
+  })
 })

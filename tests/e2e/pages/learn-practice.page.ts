@@ -44,9 +44,6 @@ export class LearnPracticePage {
     return this.page.getByTestId('practice-target-line')
   }
 
-  continueTargetMet(): Locator {
-    return this.page.getByTestId('continue-target-met')
-  }
 
   round(): Locator {
     return this.page.getByTestId('practice-round')
@@ -70,6 +67,21 @@ export class LearnPracticePage {
 
   devSan(): Locator {
     return this.page.getByTestId('dev-play-next-san')
+  }
+
+  /** Live board FEN (dev/e2e only) — asserts the physical board vs the session. */
+  devBoardFen(): Locator {
+    return this.page.getByTestId('dev-board-fen')
+  }
+
+  /** Session node FEN the board is expected to reflect (dev/e2e only). */
+  devNodeFen(): Locator {
+    return this.page.getByTestId('dev-node-fen')
+  }
+
+  /** Current round target identity (dev/e2e only). */
+  devTargetId(): Locator {
+    return this.page.getByTestId('dev-target-id')
   }
 
   async submitDevSan(san: string): Promise<void> {

@@ -31,3 +31,5 @@ public/data/openings/
 
 # storybook
 storybook-static/
+# TS incremental build info
+*.tsbuildinfo

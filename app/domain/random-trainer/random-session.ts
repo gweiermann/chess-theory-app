@@ -55,6 +55,8 @@ export interface RandomSessionState {
   phase: PracticePhase
   /** Display name of the randomly chosen target line this round. */
   targetName: string
+  /** Stable id of the randomly chosen target line for this round. */
+  targetId: string
   /** Full SAN list (both sides) of the target line. */
   targetSanMoves: string[]
   /** Index of the next expected SAN in `targetSanMoves`. */
@@ -82,9 +84,8 @@ export const PERFECT_ROUND_BONUS = 5
 export interface StartRoundOptions {
   tree: LearnedTree
   /**
-   * The randomly chosen target line for this round: it drives the user's side
-   * and the "Ziel" label shown at the top, and defines the moves the
-   * computer plays while the user stays on target.
+   * The randomly chosen target line drives the user's side and the computer's
+   * on-target replies for this round.
    */
   line: Line
   /** Carry the persistent session totals into the new round. */
@@ -102,6 +103,7 @@ export const startRound = (options: StartRoundOptions): RandomSessionState => {
     userSide,
     phase,
     targetName: options.line.fullName,
+    targetId: options.line.id,
     targetSanMoves: options.line.sanMoves,
     targetPly: 0,
     onTarget: true,

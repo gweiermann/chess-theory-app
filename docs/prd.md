@@ -3,7 +3,7 @@
 **Product:** Chess Theory Drill (working title as shown in the browser)  
 **Stack (context):** Nuxt 4, client-side opening data, local persistence  
 **Primary language:** German (UI copy, navigation, errors)  
-**Last updated:** 2026-05-15  
+**Last updated:** 2026-09-05  
 **Sources:** Live app walkthrough (browser), `docs/glossary.md`, and application code.
 
 ---
@@ -282,7 +282,7 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 
 ### 4.7 Journey G — Random Opening Trainer (Zufallsmodus)
 
-**Flow:** `/learn` → Zufallsmodus card → `/learn/practice`. A round draws one random **already-mastered** line — the round's **target line** — from the learned pool across **all** topics; the page calls it out at the top as **Ziel: \<name\>**. The user plays the user-colored side move-by-move at their own pace while the computer auto-plays its own side along the target line. No mastery/progress is ever written. The whole page stays on one mobile screen: the square board is capped to the smaller of the available width and height (a `ResizeObserver` on the board region re-measures it whenever the surrounding chrome changes, e.g. a hint row or the round-complete continue bar), so it never causes vertical scrolling.
+**Flow:** `/learn` → Zufallsmodus card → `/learn/practice`. Each round draws one random **already-mastered** target line from the learned pool across all topics. The target is internal: it drives the user's side and the opponent's replies, but is not shown to learners. The user plays their side at their own pace; the computer auto-plays its side. No mastery/progress is written. The fixed feedback and bottom-bar regions keep the board area stable on mobile.
 
 **Learned pool & tree**
 
@@ -292,9 +292,15 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 
 **Round lifecycle**
 
-- **G4.** Each round randomly draws a **target line** (which determines the user’s side). While the user stays on it, the computer plays that line’s own side (one move at a time, ~350 ms); if it is the computer’s turn first it auto-plays its plies until the user’s side is to move.
-- **G5.** A round ends at a terminal node (no learned continuation left) **or** when the user completes the target line on-target. A wrong move does **not** end the round.
-- **G6.** After the round completes, a **continue bar** shows the round result (moves, mistakes, help used, bonus, round points) and a default **“Weiter”** button that starts the next round manually (no auto-advance). Totals (score, streak, round number) carry across rounds.
+- **G4.** Each round randomly draws a **target line** (which determines the user’s side) with **family focus**: mastered lines are grouped by family, a **focus family** is drawn weighted by its maximal-line count, and the round targets a **maximal** line of that family (`keepMaximal` drops any strict-prefix-dominated line from the target pool). While the user stays on it, the computer plays that line’s own side (one move at a time, ~350 ms); if it is the computer’s turn first it auto-plays its plies until the user’s side is to move.
+- **G5.** A round ends at a terminal node (no learned continuation left) **or** when the user completes the target line on-target. A wrong move does **not** end the round. A target completed **first-try** (`targetMet`, 0 mistakes, and no Hilfe) is excluded for the rest of this browser session. A hinted, mistaken, or off-target round remains eligible.
+- **G6.** After the round completes, a **continue bar** shows the round result (moves, mistakes, help used, bonus, round points) and a default **“Weiter”** button that starts the next eligible round manually (no auto-advance). Once no eligible target remains, it reads **“Sitzung fertig”** and is disabled rather than replaying a completed target. Totals (score, streak, round number) carry across rounds.
+
+**Focus (round-focused training)**
+
+- **G16.** Focus is **session-local & read-only**: family mastery is tracked in-memory only (`mastery++` on target met, `mastery--` on a mistake, `+0.5` otherwise, clamped to `[0,10]`); nothing is written to progress.
+- **G17.** The next round **usually stays in the focus family**. The switch probability grows with focus mastery (`p = 0.1 + 0.6·(mastery/10)`); when switching, the next family is drawn weighted by its maximal-line count and never equals the current one (unless only one family exists).
+- **G18.** The continue bar gains a secondary action **“Anderes Thema”** (`continue-secondary`) that lets the user **force a switch** immediately: it re-picks a different focus family (p = 1) and starts the next round. It is stacked above **“Weiter”** within the compact single-row footer so the board region stays constant.
 
 **Scoring, streak, and hints**
 
@@ -303,9 +309,9 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 - **G9.** Wrong move: **0 points**, streak resets, counts as a mistake; the banner lists **all** valid continuations (“Möglich: …”) and the user must play one to continue.
 - **G10.** **+5 bonus** (`targetMet`) is awarded only when the round completes having followed the target line from the start **and** with **0 mistakes**. Help does **not** disqualify it.
 
-**Target line (Ziel)**
+**Target line (internal)**
 
-- **G13.** The top of the practice page calls out the chosen target line as **Ziel: \<name\>** so the user knows which line the app intends — even when playing White (no "blank page" situation).
+- **G13.** The selected target drives the user's side, the opponent's on-target replies, scoring, and first-try exclusion. It is not rendered to learners; they receive only board state, score/streak, help, and wrong-move continuations.
 - **G14.** A valid learned move that leaves the target line is still accepted, but the round drops off target (the computer then plays random learned moves) and forfeits the bonus.
 - **G15.** If the target line is a strict prefix of a longer variation in the merged tree, completing it still ends the round and awards the bonus (the user is not forced to continue a line they finished).
 
@@ -313,6 +319,9 @@ Historical / optional: `next-step` was previously tied to a physical reset and a
 
 - **G11.** The continue bar and round-completion state are **mode-agnostic** (`PlayContinueBar` + a `round-complete` phase in the engine) so classic `/learn/play` can reuse them later.
 - **G12.** Development only: `/learn/practice` mounts the same dev-play bridge as `/learn/play` (`dev-play-next-san` shows the joined valid continuations).
+- **G20.** **Board–session sync (invariant):** the physically rendered board must always mirror the session node position, whatever the input path. Because dev-bridge moves never touch the physical board, the computer's reply is played from the board only after it is snapped to the node FEN first (`setPositionFromFen(node.fen)` before each `playOpponentSan`), so the opponent always answers on the board — otherwise the board would stall behind the session ("moved, but the opponent didn't answer"). The snap is **non-animated** and a frame is yielded before enabling animation for the reply; applying both mutations in one animated frame made Chessground animate two plies at once, which users saw as a multi-piece flicker ("the board jumped to another FEN where all figures moved"). When the snapped FEN equals the board's current FEN the snap is skipped so no redundant redraw happens. A **wrong move** restores the board to the node FEN (not a blind `undoLastMove`, which would pop an unrelated earlier ply on the dev path); the restore is **guarded** so a recovery move made within the undo window advances the session node first and the stale restore is skipped rather than clobbering the correct move's board. The board and session node FENs are compared in the dev-only e2e regression (`dev-board-fen` vs `dev-node-fen`); a frame-level regression asserts a dev-bridge reply animates only the opponent's piece (never a `white pawn anim` for the user's own snap).
+- **G21.** The learner UI omits target/focus labels, phase/completion banners, and transient correct-move copy. Wrong-move guidance remains: it lists all valid continuations (“Möglich: …”).
+- **G22.** **Wrong-move restore is branch-faithful (invariant):** a wrong move restores the board to the authoritative session node (`setPositionFromFen(node.fen)` after `WRONG_UNDO_DELAY_MS`) — never to a *different* continuation branch. Investigated an in-app report that, while practicing as Black against `1.e4 e5 2.Nf3` (Two Knights), a wrong knight-mirror `Nf6` made the board "jump" to White having played `2.d4` instead. That cross-branch jump is **not reproducible** and is logically impossible in the current state machine: while on target the session and board advance in lock-step along the target line, and the restore uses the session node FEN. The described final position (White pawns on `e4`+`d4`, Black on `e5`) is exactly the *legitimate* `2.d4` target position (e.g. Danish/Scotch), which appears only when the target line actually opens `2.d4`. Regression coverage: Journey G **G8** seeds the Black Two Knights line and asserts a wrong `Nf6` restores to the Two Knights position (knight on `f3`), never a `d4` FEN; the board and node FENs stay equal throughout.
 
 ---
 
@@ -370,6 +379,7 @@ Parent/child is defined by **strict prefix** of full `sanMoves` (see `docs/gloss
 - **N5. Testing:** Critical flows covered by unit/integration tests (`vitest`) and e2e (`playwright`) per repo conventions. UI atoms and feature components ship with co-located unit tests against `@vue/test-utils`; reusable composables (`useTopicSearch`, etc.) get their own spec. In **development only**, `/learn/play` mounts a **dev play** bridge (visually hidden, not shown to learners): `data-testid="dev-play-command-input"` submits a SAN via keyboard (Enter) through the same Chessground-then-`submit` pipeline as board moves, and `data-testid="dev-play-next-san"` mirrors the session’s expected SAN (your move vs auto) so automation need not read opening JSON. Chess-illegal SANs are ignored (no session update), like an impossible board interaction. The same bridge (enabled in e2e builds via `VITE_E2E=1`) drives `/learn/practice`, where `dev-play-next-san` exposes the joined valid continuations for the random sessions. Random-trainer domain logic (`learned-tree`, `random-session`, `mastered-pool`) is unit-tested under `tests/unit/domain/random-trainer/`, and the round flow is covered by e2e journey G.
 - **N6. Component workshop:** Reusable UI components are developed and reviewed in **Storybook** (`pnpm storybook`). Each component ships with co-located `*.stories.ts` covering its meaningful states. The static bundle (`pnpm build-storybook`) doubles as a design reference.
   - *Note:* `@nuxtjs/storybook` 9.0.1 is incompatible with Nuxt 4 (transitive `@nuxt/vite-builder@3.x` clashes with Nuxt 4's built-in vite and breaks `@nuxt/ui` resolution). It is intentionally **not registered** as a Nuxt module in `nuxt.config.ts`. Storybook is invoked as a standalone CLI; the `@storybook-vue/nuxt` framework still works for stories without the module wrapper.
+- **N7. Language tooling:** OMP discovers the project-scoped language servers from `.omp/lsp.json`; their packages are versioned in `devDependencies`. TypeScript, Vue, ESLint, HTML, CSS, JSON, and Tailwind diagnostics and symbol operations are available without global npm installs. OMP's user configuration sets a five-minute idle shutdown to release unused server processes.
 
 ---
 
@@ -391,6 +401,6 @@ Parent/child is defined by **strict prefix** of full `sanMoves` (see `docs/gloss
 - Play composables: `useSessionFlow` (board lock, hint, opponent auto-play, premove buffer), `useReplayControls` (move-history step + view), `useScopedProgress` (mastery counter scoped to focus), `usePlayHeadings` (page title + phase label), `useLineLifecycle` (start/next/restart/skip/previous + mastery finalisation).
 - Page composables: `useFamilyTree`, `useFamilyNavigation`, `useLockedActions`, `useTopicSearch`.
 - Pure-domain helpers: `app/domain/line-setup.ts` (`computeLineSetup`).
-- Random Opening Trainer: `app/domain/random-trainer/{learned-tree,random-session,mastered-pool}.ts`, `app/composables/useRandomPractice.ts`, `app/composables/useMasteredPool.ts`, `app/components/play/PlayContinueBar.vue`, `app/pages/learn/practice.vue`.
+- Random Opening Trainer: `app/domain/random-trainer/{learned-tree,random-session,mastered-pool,focus}.ts`, `app/composables/useRandomPractice.ts`, `app/composables/useMasteredPool.ts`, `app/components/play/PlayContinueBar.vue`, `app/pages/learn/practice.vue`.
 
 This PRD describes **observed and code-backed behavior** as of the revision date; when implementation diverges, either update the PRD or treat the mismatch as a defect, per team policy.

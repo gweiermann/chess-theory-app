@@ -1,0 +1,14 @@
+{
+  "idleTimeoutMs": 300000,
+  "servers": {
+    "typescript-language-server": {},
+    "vue-language-server": {},
+    "eslint": {},
+    "vscode-html-language-server": {},
+    "vscode-css-language-server": {},
+    "vscode-json-language-server": {},
+    "tailwindcss": {
+      "rootMarkers": ["package.json"]
+    }
+  }
+}

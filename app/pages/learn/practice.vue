@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMasteredPool } from '~/composables/useMasteredPool'
 import { useRandomPractice } from '~/composables/useRandomPractice'
-import PlayPhaseBar from '~/components/play/PlayPhaseBar.vue'
 import PlayBoardPanel from '~/components/play/PlayBoardPanel.vue'
 import PlayContinueBar from '~/components/play/PlayContinueBar.vue'
 import FeedbackBanner from '~/components/play/FeedbackBanner.vue'
@@ -23,11 +22,13 @@ const {
   feedback,
   hintSans,
   isComputerMoving,
+  sessionExhausted,
   startSession,
   registerBoard,
   handleUserMove,
   requestHelp,
   continueToNextRound,
+  switchFocus,
   rehydrateBoard,
 } = useRandomPractice()
 const devPlayBridgeEnabled = import.meta.dev || import.meta.env.VITE_E2E === '1'
@@ -69,12 +70,6 @@ const continuations = computed(() =>
   session.value?.phase === 'user' ? [...session.value.node.edges.keys()] : [],
 )
 
-const phaseLabel = computed(() => {
-  const s = session.value
-  if (!s) return ''
-  if (s.phase === 'round-complete') return 'Runde abgeschlossen'
-  return s.phase === 'user' ? 'Dein Zug' : 'Gegner zieht'
-})
 
 const devCaption = computed(() => {
   const s = session.value
@@ -135,13 +130,6 @@ onMounted(async () => {
           {{ session?.streak ?? 0 }}
         </span>
       </p>
-      <p
-        v-if="session?.targetName"
-        class="border-t border-(--ui-border)/40 bg-(--ui-primary)/8 py-1.5 text-center text-sm font-medium text-(--ui-primary)"
-        data-testid="practice-target-line"
-      >
-        Ziel: {{ session.targetName }}
-      </p>
     </div>
 
     <div v-if="loading && !lines" class="flex flex-1 items-center justify-center p-6">
@@ -171,7 +159,6 @@ onMounted(async () => {
     </div>
 
     <template v-else-if="session">
-      <PlayPhaseBar :label="phaseLabel" />
 
       <div ref="boardAreaRef" class="board-fit relative flex min-h-0 flex-1 items-center justify-center">
         <div class="shrink-0" :style="{ width: `${boardSizePx}px` }">
@@ -184,15 +171,17 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="shrink-0 px-4 py-2 text-center">
-        <FeedbackBanner :feedback="feedback" />
-        <p
-          v-if="hintSans && feedback?.kind !== 'wrong'"
-          class="mt-1 text-sm text-(--ui-primary)"
-          data-testid="practice-hint"
-        >
+      <div class="flex h-14 shrink-0 items-center justify-center px-4 text-center">
+        <div>
+          <FeedbackBanner :feedback="feedback" />
+          <p
+            v-if="hintSans && feedback?.kind !== 'wrong'"
+            class="mt-1 text-sm text-(--ui-primary)"
+            data-testid="practice-hint"
+          >
           Möglich: <span class="font-mono">{{ hintSans.join(', ') }}</span>
         </p>
+        </div>
       </div>
 
       <template v-if="showContinueBar && session.lastRound">
@@ -202,10 +191,13 @@ onMounted(async () => {
           :mistakes="session.lastRound.mistakes"
           :help-used="session.lastRound.helpUsed"
           :bonus="session.lastRound.bonus"
-          :target-met="session.lastRound.targetMet"
           :total-score="session.score"
           :streak="session.streak"
+          :button-label="sessionExhausted ? 'Sitzung fertig' : 'Weiter'"
+          :continue-disabled="sessionExhausted"
+          :secondary-label="sessionExhausted ? '' : 'Anderes Thema'"
           @continue="continueToNextRound"
+          @secondary="switchFocus"
         />
       </template>
 
@@ -215,7 +207,7 @@ onMounted(async () => {
         style="padding-bottom: env(safe-area-inset-bottom)"
         data-testid="practice-action-bar"
       >
-        <div class="mx-auto flex max-w-sm items-center justify-around px-4 py-3">
+        <div class="mx-auto flex h-16 max-w-sm items-center justify-around px-4">
           <button
             type="button"
             class="flex flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-2.5 text-sm font-medium text-(--ui-primary) transition-colors disabled:cursor-not-allowed disabled:opacity-40"
@@ -252,6 +244,15 @@ onMounted(async () => {
         :next-move-san="devSan"
         @command="handleUserMove"
       />
+      <span v-if="devPlayBridgeEnabled" data-testid="dev-node-fen" class="hidden">
+        {{ session?.node?.fen }}
+      </span>
+      <span v-if="devPlayBridgeEnabled" data-testid="dev-target-id" class="hidden">
+        {{ session?.targetId }}
+      </span>
+      <span v-if="devPlayBridgeEnabled" data-testid="dev-target-met" class="hidden">
+        {{ session?.lastRound?.targetMet }}
+      </span>
     </template>
   </div>
 </template>

@@ -202,11 +202,12 @@ describe('availableContinuations', () => {
 })
 
 describe('target line', () => {
-  it('exposes the chosen target line for the top "Ziel" label', () => {
+  it('keeps the chosen target identity and move sequence in the round state', () => {
     const l = line(['e4', 'e5', 'Bc4'], 'white')
     l.fullName = 'Italienisch'
     const s = startRound({ tree: buildLearnedTree([l]), line: l })
     expect(s.targetName).toBe('Italienisch')
+    expect(s.targetId).toBe(l.id)
     expect(s.targetSanMoves).toEqual(['e4', 'e5', 'Bc4'])
     expect(s.userSide).toBe('white')
     expect(s.onTarget).toBe(true)
