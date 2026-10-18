@@ -1,7 +1,9 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -16,17 +18,34 @@ concurrency:
 
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm data
+      - run: pnpm lint
+      - run: pnpm typecheck
       - run: pnpm test
-      - name: Resolve base URL for Pages
+      - name: Verify manually dispatched builds
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+          pnpm test:storybook
+      - name: Resolve Pages base URL
         id: pages
         uses: actions/configure-pages@v5
       - name: Generate static site

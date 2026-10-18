@@ -1,43 +1,19 @@
-// https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  compatibilityDate: '2025-07-15',
-  devtools: { enabled: true },
-
+  compatibilityDate: '2026-10-01',
   ssr: false,
-
-  modules: ['@nuxt/ui', '@nuxt/eslint'],
-
-  eslint: {
-    config: {
-      stylistic: false,
-      typescript: true,
-    },
-  },
-
-  css: ['~/assets/css/main.css'],
-
+  devtools: { enabled: false },
+  css: ['~/assets/main.css'],
   app: {
-    baseURL: process.env.NUXT_APP_BASE_URL || '/',
     head: {
-      title: 'Chess Theory Drill',
+      title: 'Chess Theory · Eröffnungen verstehen',
       meta: [
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: 'Memorize chess opening lines fast.' },
+        {
+          name: 'description',
+          content: 'Lerne Eröffnungen und erkenne ihre Varianten im Spiel.',
+        },
       ],
     },
   },
-
-  nitro: {
-    preset: 'github-pages',
-    prerender: {
-      crawlLinks: false,
-      routes: ['/'],
-    },
-  },
-
-  vite: {
-    optimizeDeps: {
-      include: ['chess.js'],
-    },
-  },
+  typescript: { strict: true },
+  vite: { optimizeDeps: { include: ['chess.js'] } },
 })
