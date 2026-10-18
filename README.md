@@ -1,56 +1,63 @@
-# Chess Theory Drill
+# Chess Theory
 
-A static web app for memorizing chess opening lines fast. Pick an opening
-(e.g. 1.e4), drill each line one move at a time, then repeat the full
-sequence ten times before moving to the next variation.
+A browser application for learning chess openings with guided practice, recall review, and branching opening sparring. The interface is German; code and domain identifiers are English.
 
-## Stack
+## Run locally
 
-- [Nuxt 4](https://nuxt.com) + Vue 3 (`ssr: false`, GitHub Pages preset)
-- [Nuxt UI 4](https://ui.nuxt.com) (Tailwind v4)
-- [`vue3-chessboard`](https://github.com/qwerty084/vue3-chessboard) +
-  [`chess.js`](https://github.com/jhlywa/chess.js)
-- Lichess opening database
-  ([`lichess-org/chess-openings`](https://github.com/lichess-org/chess-openings))
-- Vitest, Vue Test Utils, Playwright
+Use Node.js 24 and the pnpm version declared in `package.json`.
 
-## Architecture
-
-```
-app/
-  domain/        Pure functions: types, line/tree/session/progress logic
-    data/        Pure dataset transformation (TSV -> OpeningsDataset)
-  infra/         Side-effectful adapters: openings loader, progress repository
-  composables/   Vue composables that wire domain + infra to UI state
-  components/    Reusable components (ChessBoard, SessionHud, TopicProgress)
-  pages/         Three pages: index, topic/[move], topic/[move]/practice
-  plugins/       Nuxt plugins (provides `$repositories`)
-scripts/         Build-time data generation (downloads Lichess TSVs)
-tests/
-  unit/          Pure-function tests (domain + data + infra)
-  integration/   Composable tests
-  e2e/           Playwright tests against the built static site
+```sh
+pnpm install --frozen-lockfile
+pnpm data
+pnpm dev
 ```
 
-## Local development
+The development server listens on `0.0.0.0:3040`. Open `http://localhost:3040` on the PC or `http://<PC-LAN-IP>:3040` on a phone connected to the same network. The host firewall must permit the connection.
 
-```bash
-pnpm install
-pnpm dev          # downloads opening data + starts the dev server
+For the production static build:
+
+```sh
+pnpm generate
+node scripts/serve-site.mjs --dir .output/public --host 0.0.0.0 --port 3040
 ```
 
-## Tests
+## Module ownership
 
-```bash
-pnpm test                # unit + integration
-pnpm test:coverage       # with coverage
-pnpm test:e2e            # Playwright (builds site first)
+| Module      | Owns                                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------- |
+| `board`     | Accepted chess position, move attempts, history, checkpoints, input, arrows, and premoves |
+| `openings`  | Validated opening data, lazy family loading, and sequence-based repertoires               |
+| `learning`  | Versioned learner storage, progress, activity, settings, and saved sessions               |
+| `selection` | Lesson choice, opponent replies, exploration suggestions, and review priorities           |
+| `training`  | Guided/review/sparring policies, round coordination, cancellation, and outcome recording  |
+
+Each module exposes an `index.ts` entry point and `public.ts` contracts. Vue components render snapshots and emit commands. Core modules have no Nuxt runtime dependency. Training rejects stale asynchronous work using round generations; the board uses revision checks to protect accepted state.
+
+The mobile training screen fits its viewport with a square board and compact controls. Board input supports touch/mouse pointer dragging, tap selection, keyboard input, and premoves; classic SVG piece assets have attribution in `public/pieces/cburnett`. Premoves are queued in selection order. Each opponent reply revalidates and immediately plays the next queued move. An unfinished selection or drag survives that reply and the automatic execution of a previous premove, while game resets and history browsing cancel it. An impossible queued move discards the remaining sequence. Automated game tests use accessible square buttons directly; the game has no move-command input.
+
+Teaching behavior is configured through settings and module policies. A legal alternative in the active sparring repertoire is accepted; an out-of-repertoire move is distinguished from illegal chess input. Solution hints and exploration arrows have separate learning grades.
+
+## Data and browser state
+
+The offline pipeline reads vendored TSV files in `data/source`, validates PGN with chess.js, and writes `public/data`. It preserves 3,865 records across 180 families, including 187 Italian Game records. Record identity is independent of display names. `public/data/manifest.json` contains source attribution, content hashes, and record counts. The upstream commit is unknown; source content is pinned by SHA-256.
+
+Opening browsing and legal continuation paths are separate structures. Repertoires match complete SAN prefixes and do not merge transpositions.
+
+Learner state lives in IndexedDB under `chess-theory-rebuild-v1`. State has explicit schema validation; saved sessions also identify the dataset revision. The application does not import prototype localStorage. Invalid or incompatible state is excluded from active training, and storage errors are visible.
+
+## Verification
+
+```sh
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm exec playwright install chromium
+pnpm test:e2e
+pnpm test:storybook
 ```
 
-## Deploy to GitHub Pages
+Unit tests cover module rules and data validation. Integration tests cover board/training coordination, repository behavior, and Vue interactions. E2E tests run against a generated static build in desktop and phone Chromium configurations. Storybook browser tests observe the actual completion of story interaction checks. Screenshots, video, and traces are disabled.
 
-The deployment workflow at
-[.github/workflows/deploy.yml](.github/workflows/deploy.yml) generates the
-static site with the right `baseURL` for GitHub Pages and uploads it via
-`actions/deploy-pages`. Enable Pages with the "GitHub Actions" source in
-your repository settings.
+`pnpm storybook` opens component development on port 6006. `pnpm build-storybook` creates a standalone component catalog. Stories include board input, arrows, promotion, library loading failures, learned variations, settings validation, and save/resume interactions.
+
+CI runs all checks on Node.js 24. GitHub Pages deployment builds the exact successful main-branch CI revision with the configured repository base URL. Manual deployment runs the same verification before publishing. Stockfish mistake-punishment exercises and full-game play are not implemented.

@@ -1,0 +1,160 @@
+import { describe, expect, it } from 'vitest'
+import { parseSource } from '../../scripts/build-openings'
+import {
+  createMemoryLibrary,
+  createRepertoire,
+  createOpeningLibrary,
+} from '../../app/modules/openings'
+import type { Catalog, Family } from '../../app/modules/shared'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+
+const lines = parseSource(
+  'eco\tname\tpgn\nC50\tItalian Game\t1. e4 e5 2. Nf3 Nc6 3. Bc4\nC50\tItalian Game\t1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5',
+  'fixture',
+)
+const family: Family = {
+  summary: {
+    id: lines[0]!.familyId,
+    name: 'Italian Game',
+    topicId: 'e4',
+    lineCount: 2,
+  },
+  lines,
+}
+const catalog: Catalog = {
+  version: 1,
+  revision: 'fixture',
+  lineCount: 2,
+  topics: [{ id: 'e4', name: 'King’s Pawn', familyCount: 1, lineCount: 2 }],
+  families: [family.summary],
+}
+
+describe('opening source preservation', () => {
+  it('preserves variations sharing a display name with different moves', () => {
+    const records = parseSource(
+      'eco\tname\tpgn\nC00\tFrench Defense\t1. e4 e6\nC00\tFrench Defense\t1. e4 e6 2. d4 d5',
+      'fixture',
+    )
+    expect(records).toHaveLength(2)
+    expect(records[0]!.id).not.toBe(records[1]!.id)
+    expect(records[1]!.moves).toEqual(['e4', 'e6', 'd4', 'd5'])
+  })
+  it('rejects illegal source moves with the source location', () => {
+    expect(() =>
+      parseSource('eco\tname\tpgn\nC50\tItalian Game\t1. e5', 'fixture'),
+    ).toThrow('fixture:2: invalid PGN')
+  })
+  it('continues past an exact short line when a longer variation is available', () => {
+    const repertoire = createRepertoire(lines)
+    expect(repertoire.complete(lines[0]!.moves)).toBe(false)
+    expect(repertoire.continuations(lines[0]!.moves)).toEqual(['Bc5'])
+    expect(repertoire.complete(lines[1]!.moves)).toBe(true)
+    expect(repertoire.matching(['d4'])).toEqual([])
+    expect(repertoire.complete(['d4'])).toBe(false)
+  })
+  it('loads just the requested family, sharing in-flight requests', async () => {
+    const paths: string[] = []
+    const library = createOpeningLibrary({
+      fetch: async (url) => {
+        paths.push(String(url))
+        return new Response(
+          JSON.stringify(
+            String(url).endsWith('catalog.json') ? catalog : family,
+          ),
+        )
+      },
+    })
+    await library.catalog()
+    const [first, second] = await Promise.all([
+      library.family(family.summary.id),
+      library.family(family.summary.id),
+    ])
+    expect(first).toBe(second)
+    expect(paths).toEqual([
+      '/data/catalog.json',
+      `/data/families/${family.summary.id}.json`,
+    ])
+    expect(Object.isFrozen(first.lines[0]!.moves)).toBe(true)
+  })
+  it('does not treat an HTML fallback as a library', async () => {
+    const library = createOpeningLibrary({
+      fetch: async () => new Response('<html>not a dataset</html>'),
+    })
+    await expect(library.catalog()).rejects.toThrow('Invalid JSON')
+  })
+  it('rejects corrupted nested moves before publishing a family', async () => {
+    const corrupt = {
+      ...family,
+      lines: [{ ...lines[0], moves: ['e5'] }, lines[1]],
+    }
+    const library = createOpeningLibrary({
+      fetch: async (url) =>
+        new Response(
+          JSON.stringify(
+            String(url).endsWith('catalog.json') ? catalog : corrupt,
+          ),
+        ),
+    })
+    await expect(library.family(family.summary.id)).rejects.toThrow(
+      'Invalid opening line',
+    )
+  })
+  it('memory adapter returns isolated immutable data and finds a line', async () => {
+    const library = createMemoryLibrary(catalog, [family])
+    expect(await library.line(family.summary.id, lines[1]!.id)).toEqual(
+      lines[1],
+    )
+    expect(await library.line(family.summary.id, 'absent')).toBeNull()
+  })
+  it('delivers every vendored source record including all 187 Italian variations', async () => {
+    const sources = await Promise.all(
+      ['a', 'b', 'c', 'd', 'e'].map(async (name) =>
+        parseSource(
+          await readFile(resolve(`data/source/${name}.tsv`), 'utf8'),
+          `${name}.tsv`,
+        ),
+      ),
+    )
+    const sourceLines = sources.flat()
+    expect(sourceLines).toHaveLength(3865)
+    expect(new Set(sourceLines.map((line) => line.id)).size).toBe(3865)
+    expect(
+      sourceLines.filter((line) => line.name.split(':')[0] === 'Italian Game'),
+    ).toHaveLength(187)
+    const delivered = JSON.parse(
+      await readFile(resolve('public/data/catalog.json'), 'utf8'),
+    ) as Catalog
+    expect(delivered.lineCount).toBe(3865)
+    const records = await Promise.all(
+      delivered.families.map(async (summary) => {
+        const content = JSON.parse(
+          await readFile(
+            resolve(`public/data/families/${summary.id}.json`),
+            'utf8',
+          ),
+        ) as Family
+        expect(content.lines).toHaveLength(summary.lineCount)
+        return content.lines
+      }),
+    )
+    expect(
+      records
+        .flat()
+        .map((line) => line.id)
+        .sort(),
+    ).toEqual(sourceLines.map((line) => line.id).sort())
+  }, 20000)
+  it('allows retry after a failed request instead of caching failure permanently', async () => {
+    let calls = 0
+    const library = createOpeningLibrary({
+      fetch: async () =>
+        ++calls === 1
+          ? new Response('unavailable', { status: 503 })
+          : new Response(JSON.stringify(catalog)),
+    })
+    await expect(library.catalog()).rejects.toThrow('503')
+    expect(await library.catalog()).toEqual(catalog)
+    expect(calls).toBe(2)
+  })
+})

@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+public
+data
+node_modules
+.nuxt
+.output
+storybook-static
+test-results
