@@ -304,6 +304,9 @@ h1 {
 .phase-label {
   margin-left: 10px;
   flex: 0 0 126px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-align: right;
   white-space: nowrap;
   font-size: 12px;

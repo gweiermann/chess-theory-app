@@ -67,6 +67,11 @@ test('learn a line with real board clicks, earn mastery, and retain it after rel
 }) => {
   await configure(page)
   await italian(page)
+  // Wider fallback-font metrics must not resize the header at completion.
+  await page.addStyleTag({
+    content:
+      '.training-layout .training-header .phase-label { font-family: monospace; font-size: 14px; }',
+  })
   await expect(page.getByTestId('training-phase')).toHaveText(
     'Geführt aufbauen',
   )
