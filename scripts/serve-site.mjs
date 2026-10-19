@@ -10,12 +10,14 @@ const option = (name, fallback) => {
 const root = resolve(option('--dir', '.output/public'))
 const port = Number(option('--port', '3041'))
 const host = option('--host', '127.0.0.1')
+const base = option('--base', '/')
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -43,6 +45,14 @@ createServer(async (request, response) => {
     response.writeHead(400)
     response.end()
     return
+  }
+  if (base !== '/') {
+    if (!pathname.startsWith(base)) {
+      response.writeHead(404)
+      response.end('Not found')
+      return
+    }
+    pathname = `/${pathname.slice(base.length)}`
   }
   let filename = resolve(root, `.${pathname}`)
   if (filename !== root && !filename.startsWith(`${root}${sep}`)) {

@@ -44,6 +44,7 @@ jobs:
         run: |
           pnpm exec playwright install --with-deps chromium
           pnpm test:e2e
+          pnpm test:pwa
           pnpm test:storybook
       - name: Resolve Pages base URL
         id: pages
