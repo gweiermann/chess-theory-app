@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { BoardSnapshot, Piece, MoveInput } from '../../modules/board'
+import { usePieceSprites } from './usePieceSprites'
 
 const props = defineProps<{ snapshot: BoardSnapshot; disabled?: boolean }>()
 const emit = defineEmits<{ move: [move: MoveInput] }>()
+const { sprites, settleDrop } = usePieceSprites(() => props.snapshot)
 const selected = ref<string | null>(null)
 const promotion = ref<{ from: string; to: string } | null>(null)
 const grid = ref<HTMLElement | null>(null)
@@ -274,7 +276,11 @@ function pointerUp(event: PointerEvent) {
     squares.value[
       Math.floor((y / rect.height) * 8) * 8 + Math.floor((x / rect.width) * 8)
     ]
-  if (to && to !== active.from) submit(active.from, to)
+  if (to && to !== active.from) {
+    if (props.snapshot.turn === props.snapshot.playerSide)
+      settleDrop(active.from, to)
+    submit(active.from, to)
+  }
 }
 function pointerCancel(event: PointerEvent) {
   if (gesture.value?.id === event.pointerId) cancelGesture()
@@ -336,17 +342,6 @@ const arrowColor = (purpose: string) =>
         @click="choose(square, $event)"
         @pointerdown="pointerDown($event, square)"
       >
-        <img
-          v-if="pieces.get(square)"
-          class="piece"
-          :class="{
-            'drag-origin': gesture?.dragging && gesture.from === square,
-          }"
-          :src="pieceImage(pieces.get(square)!)"
-          alt=""
-          :draggable="false"
-          aria-hidden="true"
-        />
         <span v-if="index % 8 === 0" class="rank" aria-hidden="true">{{
           square[1]
         }}</span>
@@ -360,6 +355,30 @@ const arrowColor = (purpose: string) =>
           >{{ queueOrder(square) }}</span
         >
       </button>
+      <div class="piece-layer" aria-hidden="true">
+        <div
+          v-for="sprite in sprites"
+          :key="sprite.id"
+          class="piece-sprite"
+          :class="{
+            moving: sprite.moving,
+            arriving: sprite.arriving,
+            'drop-settle': sprite.instant,
+            'drag-origin': gesture?.dragging && gesture.from === sprite.square,
+          }"
+          :data-piece-square="sprite.square"
+          :style="{
+            transform: `translate(${(squares.indexOf(sprite.square) % 8) * 100}%, ${Math.floor(squares.indexOf(sprite.square) / 8) * 100}%)`,
+          }"
+        >
+          <img
+            class="piece"
+            :src="pieceImage(sprite)"
+            alt=""
+            :draggable="false"
+          />
+        </div>
+      </div>
       <svg class="arrows" viewBox="0 0 8 8" aria-hidden="true">
         <g
           v-for="(arrow, index) in snapshot.arrows"
@@ -513,6 +532,46 @@ const arrowColor = (purpose: string) =>
   user-select: none;
   pointer-events: none;
   z-index: 1;
+}
+.piece-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.piece-sprite {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 12.5%;
+  height: 12.5%;
+  display: grid;
+  place-items: center;
+  transition: transform 220ms cubic-bezier(0.22, 0.7, 0.2, 1);
+  pointer-events: none;
+}
+.piece-sprite.moving {
+  z-index: 1;
+}
+.piece-sprite.arriving {
+  animation: piece-arrive 140ms ease-out;
+}
+.piece-sprite.drop-settle {
+  transition: none;
+}
+@keyframes piece-arrive {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .piece-sprite {
+    transition: none;
+    animation: none;
+  }
 }
 .drag-origin {
   opacity: 0;
