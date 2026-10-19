@@ -41,7 +41,11 @@ const start = async (mode: Mode) => {
       now: Date.now(),
       random: Math.random,
     })
-    const line = choice?.line ?? family.lines[0]!
+    if (!choice) {
+      await navigateTo('/openings')
+      return
+    }
+    const line = choice.line
     await navigateTo({
       path: '/learn/play',
       query: { family: summary.id, line: line.id, mode },
@@ -82,7 +86,10 @@ const resume = async () => {
         {{ workspace.warning.value }}
       </p>
       <button
-        v-if="workspace.learning.value?.session"
+        v-if="
+          workspace.learning.value?.session?.datasetRevision ===
+          workspace.catalog.value?.revision
+        "
         class="resume-card"
         @click="resume"
       >
@@ -98,9 +105,17 @@ const resume = async () => {
               /></svg
           ></span>
           <h2>Geführt lernen</h2>
-          <NuxtLink class="button primary" to="/openings"
-            >Eröffnungen entdecken →</NuxtLink
+          <button
+            class="button primary"
+            :disabled="!!starting"
+            @click="start('guided')"
           >
+            {{
+              starting === 'guided'
+                ? 'Runde wird vorbereitet …'
+                : 'Neue Variante lernen →'
+            }}
+          </button>
         </article>
         <article class="mode-card sparring">
           <span class="mode-icon" aria-hidden="true"
@@ -109,7 +124,7 @@ const resume = async () => {
                 d="m5 3 7 7-2 2-7-7V3h2Zm14 0-7 7 2 2 7-7V3h-2ZM4 16l4 4M6 18l6-6m8 4-4 4m2-2-6-6M3 21l3-3m15 3-3-3"
               /></svg
           ></span>
-          <h2>Eröffnungs-Sparring</h2>
+          <h2>Freies Spiel</h2>
           <button
             class="button primary"
             :disabled="!!starting"

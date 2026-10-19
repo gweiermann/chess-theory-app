@@ -1,4 +1,5 @@
 import { Chess } from 'chess.js'
+import { terminalLines } from '../openings'
 import { progressKey, responseKey } from '../shared'
 import type { OpeningLine, ReviewMemory } from '../shared'
 import type {
@@ -11,7 +12,13 @@ import type {
 } from './public'
 
 const isLearned = (input: SelectionInput, line: OpeningLine) =>
-  input.progress[progressKey(line.id, input.side)]?.status === 'mastered'
+  input.lines.some(
+    (known) =>
+      known.familyId === line.familyId &&
+      input.progress[progressKey(known.id, input.side)]?.status ===
+        'mastered' &&
+      line.moves.every((move, index) => known.moves[index] === move),
+  )
 const pick = <T>(items: readonly T[], random: () => number): T | undefined =>
   items[
     Math.min(items.length - 1, Math.max(0, Math.floor(random() * items.length)))
@@ -50,29 +57,46 @@ function linePriority(
   return priority
 }
 export function chooseLesson(input: SelectionInput): LessonChoice | null {
-  let eligible = input.lines.filter((line) =>
+  const recent = Object.values(input.progress)
+    .filter((record) => record.side === input.side)
+    .sort((a, b) => b.lastPracticedAt - a.lastPracticedAt)
+    .map((record) => input.lines.find((line) => line.id === record.lineId))
+    .find((line) => line !== undefined)
+  const previous =
+    input.lines.find((line) => line.id === input.lastLineId) ?? recent
+  const sharedDepth = (line: OpeningLine) => {
+    if (!previous || line.familyId !== previous.familyId) return 0
+    const difference = line.moves.findIndex(
+      (move, index) => previous.moves[index] !== move,
+    )
+    return difference < 0 ? line.moves.length : difference
+  }
+  let eligible = terminalLines(input.lines).filter((line) =>
     line.moves.some(
       (_, index) => (index % 2 === 0) === (input.side === 'white'),
     ),
   )
   if (input.mode === 'guided')
     eligible = eligible.filter((line) => !isLearned(input, line))
-  if (
-    input.mode === 'sparring' &&
-    eligible.some((line) => isLearned(input, line))
-  )
-    eligible = eligible.filter((line) => isLearned(input, line))
   if (input.lastLineId && eligible.length > 1)
     eligible = eligible.filter((line) => line.id !== input.lastLineId)
   const ordered = [...eligible].sort((a, b) =>
     input.mode === 'review'
       ? linePriority(input, b) - linePriority(input, a) ||
         a.moves.length - b.moves.length
-      : a.moves.length - b.moves.length || a.name.localeCompare(b.name),
+      : (input.mode === 'guided' ? sharedDepth(b) - sharedDepth(a) : 0) ||
+        b.moves.length - a.moves.length ||
+        a.name.localeCompare(b.name) ||
+        a.id.localeCompare(b.id),
   )
   const line =
     input.mode === 'sparring'
-      ? pick(ordered.slice(0, 8), input.random)
+      ? pick(
+          ordered.filter(
+            (line) => line.moves.length === ordered[0]?.moves.length,
+          ),
+          input.random,
+        )
       : ordered[0]
   return line
     ? {
@@ -94,7 +118,10 @@ export function chooseReply(input: ReplyInput): ReplyChoice | null {
       line.moves.length > input.history.length,
   )
   const learned = matching.filter((line) => isLearned(input, line))
-  const pool = !input.allowNew && learned.length ? learned : matching
+  const maximumDepth = Math.max(0, ...matching.map((line) => line.moves.length))
+  const deepest = matching.filter((line) => line.moves.length === maximumDepth)
+  const familiar = deepest.filter((line) => isLearned(input, line))
+  const pool = !input.allowNew && familiar.length ? familiar : deepest
   const moves = [
     ...new Set(pool.map((line) => line.moves[input.history.length]!)),
   ]

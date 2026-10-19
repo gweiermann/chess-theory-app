@@ -245,7 +245,7 @@ it('history after a clean round cannot grant the next unplayed repetition', asyn
   controller.dispose()
 })
 
-it('uses the started learner side rather than the initial setting for learned repertoire', async () => {
+it('grades familiar free-play moves using the started side while accepting the full tree', async () => {
   const board = createBoard()
   const repository = createMemoryRepository()
   const learning = await repository.load()
@@ -282,9 +282,14 @@ it('uses the started learner side rather than the initial setting for learned re
   })
   controller.start('other', 'sparring', 'black')
   await vi.advanceTimersByTimeAsync(100)
-  expect(controller.snapshot().available).toEqual(['c5'])
+  expect(controller.snapshot().available).toEqual(['e5', 'c5'])
   controller.submit('c5')
   expect(board.snapshot().moves).toEqual(['e4', 'c5'])
+  await controller.retrySaving()
+  expect(
+    (await repository.load()).activity.find((event) => event.move === 'c5')
+      ?.grade,
+  ).toBe('recalled')
   controller.dispose()
 })
 

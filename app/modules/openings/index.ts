@@ -3,4 +3,5 @@ export {
   createOpeningLibrary,
   createMemoryLibrary,
   createRepertoire,
+  terminalLines,
 } from './implementation'

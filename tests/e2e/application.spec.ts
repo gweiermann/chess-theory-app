@@ -1,5 +1,46 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { Chess } from 'chess.js'
+
+const longestItalian = [
+  'e4',
+  'e5',
+  'Nf3',
+  'Nc6',
+  'Bc4',
+  'Bc5',
+  'c3',
+  'Nf6',
+  'd4',
+  'exd4',
+  'cxd4',
+  'Bb4+',
+  'Nc3',
+  'Nxe4',
+  'O-O',
+  'Bxc3',
+  'd5',
+  'Bf6',
+  'Re1',
+  'Ne7',
+  'Rxe4',
+  'd6',
+  'Bg5',
+  'Bxg5',
+  'Nxg5',
+  'O-O',
+  'Nxh7',
+]
+
+async function playLongestItalian(page: Page) {
+  const game = new Chess()
+  for (const san of longestItalian) {
+    const learnerTurn = game.turn() === 'w'
+    const played = game.move(san)
+    if (learnerTurn) await move(page, played.from, played.to)
+    else await page.clock.runFor(900)
+  }
+}
 
 async function configure(page: Page, side = 'white', repetitions = '1') {
   await page.goto('/profile')
@@ -12,10 +53,14 @@ async function configure(page: Page, side = 'white', repetitions = '1') {
 }
 async function italian(page: Page, mode = 'Lernen') {
   await page.goto('/openings')
-  await page.getByLabel('Eröffnung suchen').fill('Italian Game')
-  await page.getByRole('button', { name: /Italian Game.*187/ }).click()
   await page
-    .getByRole('button', { name: `${mode}: Italian Game`, exact: true })
+    .getByLabel('Variante oder Zugfolge suchen')
+    .fill('Anti-Fried Liver')
+  await page
+    .getByRole('button', {
+      name: `${mode}: Italian Game: Anti-Fried Liver Defense`,
+      exact: true,
+    })
     .click()
   await expect(page.getByTestId('square-e2')).toBeVisible()
 }
@@ -60,6 +105,34 @@ test('cold page contains a loading shell and the full app becomes usable', async
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true)
+})
+
+test('new learning follows complete Italian leaves and selects the deepest sibling next', async ({
+  page,
+}) => {
+  test.setTimeout(60000)
+  await configure(page)
+  await page.goto('/openings')
+  await expect(
+    page.getByRole('heading', { name: 'Italienisch', exact: true }),
+  ).toBeVisible()
+  await expect(page.locator('.line-card')).toHaveCount(114)
+  await expect(page.getByTestId('line-C50-9be1bdf94f6d382ed8f5')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Nächste Variante lernen' }).click()
+  await expect(page).toHaveURL(/line=C54-052bf93dbba66694a081/)
+  await page.clock.install()
+  await page.clock.pauseAt(new Date(Date.now() + 1000))
+  await playLongestItalian(page)
+  await expect(page.getByTestId('training-phase')).toHaveText(
+    'Aus dem Gedächtnis',
+  )
+  await page.clock.runFor(650)
+  await expect(page.getByTestId('square-e2')).toHaveAttribute('data-piece', 'p')
+  await playLongestItalian(page)
+  await expect(page.getByTestId('round-complete')).toContainText('gemeistert')
+  await page.clock.resume()
+  await page.getByRole('button', { name: 'Nächste Runde →' }).click()
+  await expect(page).toHaveURL(/line=C54-f4f02af37ea66cd54264/)
 })
 
 test('learn a line with real board clicks, earn mastery, and retain it after reload', async ({

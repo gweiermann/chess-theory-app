@@ -27,33 +27,14 @@ const italian: Family = {
     },
   ],
 }
-const french: Family = {
-  summary: {
-    id: 'french',
-    name: 'French Defense',
-    topicId: 'e4',
-    lineCount: 1,
-  },
-  lines: [
-    {
-      id: 'advance',
-      familyId: 'french',
-      topicId: 'e4',
-      name: 'French Defense: Advance Variation',
-      eco: 'C02',
-      moves: ['e4', 'e6', 'd4', 'd5', 'e5'],
-      suggestedSide: 'black',
-    },
-  ],
-}
 const catalog: Catalog = {
   version: 1,
   revision: 'storybook-fixture',
-  topics: [{ id: 'e4', name: 'King’s Pawn', familyCount: 2, lineCount: 3 }],
-  families: [italian.summary, french.summary],
-  lineCount: 3,
+  topics: [{ id: 'e4', name: 'King’s Pawn', familyCount: 1, lineCount: 2 }],
+  families: [italian.summary],
+  lineCount: 2,
 }
-const library = createMemoryLibrary(catalog, [italian, french])
+const library = createMemoryLibrary(catalog, [italian])
 const meta = {
   title: 'Openings/LibraryBrowser',
   component: LibraryBrowser,
@@ -69,7 +50,19 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Browse: Story = {}
+export const Browse: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+    await userEvent.click(
+      await canvas.findByRole('button', { name: 'Nächste Variante lernen' }),
+    )
+    await expect(args.onPractice).toHaveBeenCalledWith({
+      familyId: 'italian',
+      lineId: 'classical',
+      mode: 'guided',
+    })
+  },
+}
 export const LearnedVariations: Story = {
   args: {
     progress: {
@@ -84,18 +77,20 @@ export const LearnedVariations: Story = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(canvas.getByTestId('family-italian'))
+    await userEvent.click(
+      await canvas.findByRole('button', { name: /^Gelernt$/ }),
+    )
     const row = await canvas.findByTestId('line-classical')
-    await expect(within(row).getByText('Gelernt')).toBeVisible()
+    await expect(within(row).getByText('Gelernt ✓')).toBeVisible()
     await userEvent.click(
       within(row).getByRole('button', {
-        name: 'Sparring: Italian Game: Classical',
+        name: 'Wiederholen: Italian Game: Classical',
       }),
     )
     await expect(args.onPractice).toHaveBeenCalledWith({
       familyId: 'italian',
       lineId: 'classical',
-      mode: 'sparring',
+      mode: 'review',
     })
   },
 }
@@ -110,7 +105,6 @@ export const LoadFailure: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(canvas.getByTestId('family-italian'))
     await expect(await canvas.findByRole('alert')).toBeVisible()
   },
 }

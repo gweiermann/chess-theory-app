@@ -26,7 +26,113 @@ const lines: OpeningLine[] = [
   },
 ]
 describe('lesson selection', () => {
-  it('does not treat White mastery as Black mastery', () => {
+  it('never offers learned paths again under a prefix or duplicate record name', () => {
+    const alias = {
+      ...lines[1]!,
+      id: 'alias',
+      name: 'Another record for the same path',
+    }
+    const selected = chooseLesson({
+      lines: [...lines, alias],
+      side: 'white',
+      mode: 'guided',
+      progress: {
+        'white:alias': {
+          lineId: 'alias',
+          side: 'white',
+          status: 'mastered',
+          cleanRepetitions: 5,
+          lastPracticedAt: 1,
+        },
+      },
+      memories: {},
+      now: 100,
+      random: () => 0,
+    })
+    expect(selected).toBeNull()
+  })
+  it('extends free play along the deepest reply even when only a shorter line is learned', () => {
+    const known = { ...lines[1]!, id: 'known' }
+    const deeper = {
+      ...lines[0]!,
+      id: 'deep',
+      moves: [...lines[0]!.moves, 'Nf6', 'Ng5', 'd5', 'exd5'],
+    }
+    const reply = chooseReply({
+      lines: [known, deeper],
+      history: lines[0]!.moves,
+      progress: {
+        'white:known': {
+          lineId: 'known',
+          side: 'white',
+          status: 'mastered',
+          cleanRepetitions: 5,
+          lastPracticedAt: 1,
+        },
+      },
+      memories: {},
+      side: 'white',
+      mode: 'sparring',
+      now: 100,
+      random: () => 0,
+      allowNew: false,
+    })
+    expect(reply).toEqual({ san: 'Nf6', newMaterial: true })
+  })
+  it('continues with the deepest unlearned sibling, including after reopening learning', () => {
+    const trunk = [
+      ...lines[1]!.moves,
+      'c3',
+      'Nf6',
+      'd4',
+      'exd4',
+      'cxd4',
+      'Bb4+',
+    ]
+    const candidates = [
+      { ...lines[0]!, id: 'previous', moves: [...trunk, 'Nc3', 'Nxe4'] },
+      { ...lines[0]!, id: 'sibling', moves: [...trunk, 'Bd2'] },
+      {
+        ...lines[0]!,
+        id: 'farther',
+        moves: [
+          ...lines[0]!.moves,
+          'Nf6',
+          'Ng5',
+          'd5',
+          'exd5',
+          'Na5',
+          'Bb5+',
+          'c6',
+          'dxc6',
+          'bxc6',
+          'Be2',
+        ],
+      },
+    ]
+    const input = {
+      lines: candidates,
+      side: 'white' as const,
+      mode: 'guided' as const,
+      progress: {
+        'white:previous': {
+          lineId: 'previous',
+          side: 'white' as const,
+          status: 'mastered' as const,
+          cleanRepetitions: 5,
+          lastPracticedAt: 99,
+        },
+      },
+      memories: {},
+      now: 100,
+      random: () => 0,
+    }
+    expect(chooseLesson({ ...input, lastLineId: 'previous' })?.line.id).toBe(
+      'sibling',
+    )
+    expect(chooseLesson(input)?.line.id).toBe('sibling')
+  })
+  it('teaches the longest continuation and does not treat White mastery as Black mastery', () => {
     const selected = chooseLesson({
       lines,
       side: 'black',
@@ -44,9 +150,9 @@ describe('lesson selection', () => {
       now: 100,
       random: () => 0,
     })
-    expect(selected?.line.id).toBe('italian')
+    expect(selected?.line.id).toBe('classical')
   })
-  it('does not introduce an unfamiliar opponent reply when a learned continuation is available', () => {
+  it('prefers a familiar opponent reply among equally deep continuations', () => {
     const candidates = [
       {
         ...lines[0]!,

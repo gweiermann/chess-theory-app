@@ -22,6 +22,87 @@ const family: Family = {
 }
 afterEach(() => vi.useRealTimers())
 describe('training coordinator', () => {
+  it('expands a named prefix to a complete lesson when starting guided learning', () => {
+    const longer = {
+      ...family.lines[0]!,
+      id: 'long',
+      moves: [...family.lines[0]!.moves, 'Bc5', 'c3'],
+    }
+    const controller = createTraining({
+      board: createBoard(),
+      repository: createMemoryRepository(),
+      family: { ...family, lines: [...family.lines, longer] },
+      settings: { ...DEFAULT_SETTINGS },
+      datasetRevision: 'test',
+    })
+    controller.start('base', 'guided', 'white')
+    expect(controller.snapshot().line.id).toBe('long')
+    controller.dispose()
+  })
+  it('continues free play beyond learned prefixes and helps with unfamiliar continuations', async () => {
+    vi.useFakeTimers()
+    const board = createBoard()
+    const repository = createMemoryRepository()
+    const learning = await repository.load()
+    learning.progress['white:base'] = {
+      lineId: 'base',
+      side: 'white',
+      status: 'mastered',
+      cleanRepetitions: 5,
+      lastPracticedAt: 1,
+    }
+    const extended = {
+      ...family.lines[0]!,
+      id: 'long',
+      moves: [...family.lines[0]!.moves, 'Bc5', 'c3', 'Nf6', 'd4'],
+    }
+    const controller = createTraining({
+      board,
+      repository,
+      learning,
+      family: { ...family, lines: [...family.lines, extended] },
+      settings: { ...DEFAULT_SETTINGS, autoSetup: false, allowNew: false },
+      datasetRevision: 'test',
+      opponentDelayMs: 100,
+    })
+    controller.start('base', 'sparring', 'white')
+    controller.submit('e4')
+    await vi.advanceTimersByTimeAsync(100)
+    controller.submit('Nf3')
+    await vi.advanceTimersByTimeAsync(100)
+    controller.submit('Bc4')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(board.snapshot().moves).toEqual([
+      'e4',
+      'e5',
+      'Nf3',
+      'Nc6',
+      'Bc4',
+      'Bc5',
+    ])
+    expect(controller.snapshot()).toMatchObject({
+      status: 'player',
+      newMaterial: true,
+      expectedSan: 'c3',
+    })
+    controller.submit('a3')
+    controller.requestHelp()
+    expect(board.snapshot().arrows).toEqual([
+      { from: 'c2', to: 'c3', purpose: 'solution' },
+    ])
+    controller.submit('c3')
+    await vi.advanceTimersByTimeAsync(100)
+    controller.submit('d4')
+    expect(controller.snapshot().phase).toBe('complete')
+    await controller.retrySaving()
+    const result = await repository.load()
+    expect(result.progress['white:long']?.status).not.toBe('mastered')
+    expect(
+      result.activity.filter((event) => event.move === 'c3')[0]?.grade,
+    ).toBe('new')
+    expect(controller.snapshot().mistakes).toBe(0)
+    controller.dispose()
+  })
   it('records skipping a round at most once', async () => {
     const repository = createMemoryRepository()
     const controller = createTraining({
