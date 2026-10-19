@@ -62,8 +62,8 @@ describe('opening source preservation', () => {
       }
       expect(results[0]).toBe(results[1])
     } finally {
-      if (dirname(root) !== cache) throw new Error('Unexpected fixture path')
-      await rm(root, { recursive: true, force: true })
+      if (dirname(root) === cache)
+        await rm(root, { recursive: true, force: true })
     }
   })
   it('derives course membership from its shortest source anchor, regardless of variation names', () => {
