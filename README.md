@@ -21,6 +21,14 @@ pnpm generate
 node scripts/serve-site.mjs --dir .output/public --host 0.0.0.0 --port 3040
 ```
 
+## Install and use offline
+
+The production app is an installable PWA at https://gweiermann.github.io/chess-theory-app/. On Android, use the browser's install/add-to-home-screen action; on iOS, use Safari's Share → Add to Home Screen. The manifest, standalone launch, regular and maskable icons, and Apple touch icon use the deployment base URL.
+
+After the first successful online load installs the service worker, the app shell, all routes, chess pieces, and Italian opening data are available offline. Progress continues to use IndexedDB. Each production build precaches its own revision of all app and course assets together. Updates wait rather than reloading an active round; when an update is ready, Profil offers “App aktualisieren”. Closing all app tabs also allows a waiting update to activate. Old precaches are removed when the new worker activates.
+
+Service workers are disabled in `pnpm dev`. Installation and offline support require HTTPS, except on localhost; the phone's plain HTTP LAN URL remains suitable for development but cannot install the PWA. Test a generated production build to verify offline behavior. `pnpm pwa:icons` regenerates the checked-in PNG icons from the app's SVG rook mark using installed Playwright Chromium.
+
 ## Module ownership
 
 | Module      | Owns                                                                                      |
@@ -55,10 +63,11 @@ pnpm typecheck
 pnpm test
 pnpm exec playwright install chromium
 pnpm test:e2e
+pnpm test:pwa
 pnpm test:storybook
 ```
 
-Unit tests cover module rules and data validation. Integration tests cover board/training coordination, repository behavior, and Vue interactions. E2E tests run against a generated static build in desktop and phone Chromium configurations. Storybook browser tests observe the actual completion of story interaction checks. Screenshots, video, and traces are disabled.
+Unit tests cover module rules and data validation. Integration tests cover board/training coordination, repository behavior, and Vue interactions. E2E tests run against a generated static build in desktop and phone Chromium configurations. Dedicated PWA tests build under the GitHub Pages subdirectory and verify install metadata, actual icon decoding, worker scope, offline library loading, gameplay and deep-link reloads. Storybook browser tests observe the actual completion of story interaction checks. Screenshots, video, and traces are disabled.
 
 `pnpm storybook` opens component development on port 6006. `pnpm build-storybook` creates a standalone component catalog. Stories include an interactive move/reset animation demo with castling, en passant and promotion, board input, arrows, promotion, direct Italian lesson recommendations, library loading failures, learned variations, settings validation, and save/resume interactions.
 

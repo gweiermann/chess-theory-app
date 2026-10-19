@@ -32,4 +32,5 @@ jobs:
       - run: pnpm test
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+      - run: pnpm test:pwa
       - run: pnpm test:storybook

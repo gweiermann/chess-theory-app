@@ -5,6 +5,7 @@ import SettingsPanel from '../components/learning/SettingsPanel.vue'
 import type { Mode, Settings, Side } from '../modules/shared'
 import { terminalLines } from '../modules/openings'
 const workspace = useWorkspace()
+const { $appUpdates } = useNuxtApp()
 const saving = ref(false)
 const message = ref('')
 const error = ref(false)
@@ -65,7 +66,16 @@ const resume = (item: {
 </script>
 <template>
   <AppFrame active="profile">
-    <h1>Dein Profil</h1>
+    <div class="profile-header">
+      <h1>Dein Profil</h1>
+      <button
+        v-if="$appUpdates.available.value"
+        class="button"
+        @click="$appUpdates.apply()"
+      >
+        App aktualisieren
+      </button>
+    </div>
     <p v-if="workspace.warning.value" class="notice">
       {{ workspace.warning.value }}
     </p>
@@ -89,9 +99,18 @@ const resume = (item: {
   </AppFrame>
 </template>
 <style scoped>
+.profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
 h1 {
   font-size: 25px;
-  margin: 0 0 12px;
+  margin: 0;
   flex-shrink: 0;
 }
 .profile-panel {
