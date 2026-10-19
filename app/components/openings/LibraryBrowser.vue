@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { terminalLines, createRepertoire } from '../../modules/openings'
 import type {
   Catalog,
   Family,
   OpeningLibrary,
-} from '../../modules/openings/public'
+  OpeningLine,
+} from '../../modules/openings'
+import { chooseLesson } from '../../modules/selection'
 import type { Mode, Progress, Side } from '../../modules/shared'
 import { progressKey } from '../../modules/shared'
 
@@ -18,370 +21,376 @@ const emit = defineEmits<{
   practice: [value: { familyId: string; lineId: string; mode: Mode }]
   family: [value: { familyId: string }]
 }>()
-const topic = ref('all')
-const search = ref('')
-const variationSearch = ref('')
-const selectedId = ref<string | null>(null)
-const selected = ref<Family | null>(null)
-const loading = ref(false)
+const selected = shallowRef<Family | null>(null)
+const loading = ref(true)
 const error = ref('')
-const limit = ref(20)
+const search = ref('')
+const filter = ref<'new' | 'learned' | 'all'>('new')
 let generation = 0
-
-const families = computed(() =>
-  props.catalog.families.filter(
-    (family) =>
-      (topic.value === 'all' || family.topicId === topic.value) &&
-      family.name
+const learnedPaths = computed(() =>
+  createRepertoire(
+    (selected.value?.lines ?? []).filter(
+      (line) =>
+        props.progress[progressKey(line.id, props.side)]?.status === 'mastered',
+    ),
+  ),
+)
+const learned = (line: OpeningLine) =>
+  learnedPaths.value.matching(line.moves).length > 0
+const lines = computed(() =>
+  terminalLines(selected.value?.lines ?? []).sort(
+    (a, b) =>
+      b.moves.length - a.moves.length ||
+      a.name.localeCompare(b.name) ||
+      a.id.localeCompare(b.id),
+  ),
+)
+const next = computed(
+  () =>
+    chooseLesson({
+      lines: selected.value?.lines ?? [],
+      progress: props.progress,
+      memories: {},
+      side: props.side,
+      mode: 'guided',
+      now: 0,
+      random: () => 0,
+    })?.line,
+)
+const visible = computed(() =>
+  lines.value.filter(
+    (line) =>
+      (filter.value === 'all' ||
+        learned(line) === (filter.value === 'learned')) &&
+      `${line.name} ${line.eco} ${line.moves.join(' ')}`
         .toLocaleLowerCase()
         .includes(search.value.trim().toLocaleLowerCase()),
   ),
 )
-const variations = computed(() =>
-  (selected.value?.lines ?? []).filter((line) =>
-    `${line.name} ${line.eco} ${line.moves.join(' ')}`
-      .toLocaleLowerCase()
-      .includes(variationSearch.value.trim().toLocaleLowerCase()),
-  ),
-)
-const visible = computed(() => variations.value.slice(0, limit.value))
-const topicLabel = (id: string) =>
-  ({ e4: '1. e4', d4: '1. d4', c4: '1. c4', Nf3: '1. Sf3', other: 'Weitere' })[
-    id
-  ] ?? id
-
-async function open(id: string) {
+const shortName = (line: OpeningLine) =>
+  line.name.replace(/^Italian Game:\s*/, '')
+const movesText = (line: OpeningLine) =>
+  line.moves
+    .map((move, index) =>
+      index % 2 === 0 ? `${Math.floor(index / 2) + 1}. ${move}` : move,
+    )
+    .join(' ')
+function practice(lineId: string, mode: Mode) {
+  if (selected.value)
+    emit('practice', { familyId: selected.value.summary.id, lineId, mode })
+}
+async function load() {
+  const id = props.catalog.families[0]?.id
   const current = ++generation
-  selectedId.value = id
   selected.value = null
-  variationSearch.value = ''
-  limit.value = 20
   error.value = ''
   loading.value = true
-  emit('family', { familyId: id })
   try {
-    const result = await props.library.family(id)
-    if (current === generation) selected.value = result
+    if (!id) throw new Error('No opening available')
+    emit('family', { familyId: id })
+    const family = await props.library.family(id)
+    if (current === generation) selected.value = family
   } catch {
     if (current === generation)
-      error.value =
-        'Diese Varianten konnten nicht geladen werden. Bitte versuche es erneut.'
+      error.value = 'Die Varianten konnten nicht geladen werden.'
   } finally {
     if (current === generation) loading.value = false
   }
 }
-function back() {
-  generation++
-  selectedId.value = null
-  selected.value = null
-  loading.value = false
-  error.value = ''
-}
-function practice(lineId: string, mode: Mode) {
-  if (selectedId.value)
-    emit('practice', { familyId: selectedId.value, lineId, mode })
-}
-function status(lineId: string) {
-  const record = props.progress[progressKey(lineId, props.side)]
-  if (!record) return 'Noch nicht geübt'
-  return record.status === 'mastered'
-    ? 'Gelernt'
-    : `${record.cleanRepetitions} sichere Wiederholungen`
-}
+watch(() => [props.catalog, props.library], load, { immediate: true })
 onBeforeUnmount(() => {
   generation++
 })
 </script>
-
 <template>
   <section class="library" aria-label="Eröffnungsbibliothek">
-    <template v-if="!selectedId">
+    <p v-if="loading" role="status">Varianten werden geladen …</p>
+    <div v-else-if="error" role="alert" class="error">
+      <p>{{ error }}</p>
+      <button type="button" @click="load">Erneut laden</button>
+    </div>
+    <template v-else-if="selected">
       <header>
-        <p class="eyebrow">Dein Repertoire</p>
-        <h2>Eröffnungen entdecken</h2>
-        <p>
-          {{ catalog.lineCount.toLocaleString('de-DE') }} Varianten. Wähle eine
-          Eröffnung und spiele deine Seite.
-        </p>
+        <h2>
+          {{
+            selected.summary.name === 'Italian Game'
+              ? 'Italienisch'
+              : selected.summary.name
+          }}
+        </h2>
+        <span class="side">{{ side === 'white' ? 'Weiß' : 'Schwarz' }}</span>
       </header>
-      <nav class="topics" aria-label="Erster Zug">
+      <button
+        v-if="next"
+        type="button"
+        class="recommendation"
+        aria-label="Nächste Variante lernen"
+        @click="practice(next.id, 'guided')"
+      >
+        <span
+          ><strong>Nächste Variante</strong
+          ><span class="recommended-name">{{ shortName(next) }}</span></span
+        >
+        <span class="recommendation-arrow" aria-hidden="true">→</span>
+      </button>
+      <p v-else class="all-learned" role="status">Alle Varianten gelernt.</p>
+      <nav class="filters" aria-label="Varianten filtern">
         <button
           type="button"
-          :aria-pressed="topic === 'all'"
-          @click="topic = 'all'"
+          :aria-pressed="filter === 'new'"
+          @click="filter = 'new'"
+        >
+          Offen
+        </button>
+        <button
+          type="button"
+          :aria-pressed="filter === 'learned'"
+          @click="filter = 'learned'"
+        >
+          Gelernt
+        </button>
+        <button
+          type="button"
+          :aria-pressed="filter === 'all'"
+          @click="filter = 'all'"
         >
           Alle
         </button>
-        <button
-          v-for="item in catalog.topics"
-          :key="item.id"
-          type="button"
-          :aria-pressed="topic === item.id"
-          @click="topic = item.id"
-        >
-          {{ topicLabel(item.id) }}
-        </button>
       </nav>
       <label class="search"
-        >Eröffnung suchen<input
+        ><span class="visually-hidden">Variante oder Zugfolge suchen</span
+        ><input
           v-model="search"
           type="search"
-          placeholder="Zum Beispiel Italian Game"
+          placeholder="Variante oder Zugfolge suchen"
       /></label>
-      <p class="muted" aria-live="polite">{{ families.length }} Eröffnungen</p>
-      <div class="families">
-        <button
-          v-for="item in families"
-          :key="item.id"
-          type="button"
-          class="family-card"
-          :data-testid="`family-${item.id}`"
-          @click="open(item.id)"
+      <ol class="variations" aria-label="Vollständige Varianten">
+        <li
+          v-for="line in visible"
+          :key="line.id"
+          :data-testid="`line-${line.id}`"
+          class="line-card"
         >
-          <strong>{{ item.name }}</strong
-          ><span
-            >{{ item.lineCount }} Varianten ·
-            {{ topicLabel(item.topicId) }}</span
-          ><span class="explore">Varianten ansehen →</span>
-        </button>
-      </div>
-      <p v-if="!families.length" class="empty">
-        Keine Eröffnung gefunden. Versuche einen anderen Suchbegriff.
-      </p>
-    </template>
-    <template v-else>
-      <button type="button" class="back" @click="back">
-        ← Alle Eröffnungen
-      </button>
-      <p v-if="loading" role="status">Varianten werden geladen …</p>
-      <div v-else-if="error" role="alert" class="error">
-        <p>{{ error }}</p>
-        <button type="button" @click="open(selectedId!)">Erneut laden</button>
-      </div>
-      <template v-else-if="selected">
-        <header>
-          <p class="eyebrow">
-            {{ side === 'white' ? 'Du spielst Weiß' : 'Du spielst Schwarz' }}
+          <div class="line-meta">
+            <span>{{ Math.ceil(line.moves.length / 2) }} Züge</span
+            ><span v-if="learned(line)" class="learned">Gelernt ✓</span>
+          </div>
+          <h3>{{ shortName(line) }}</h3>
+          <p class="moves" tabindex="0" :aria-label="`Zugfolge: ${line.name}`">
+            {{ movesText(line) }}
           </p>
-          <h2>{{ selected.summary.name }}</h2>
-          <p>{{ selected.lines.length }} Varianten für dein Training.</p>
-        </header>
-        <label class="search"
-          >Variante oder Zugfolge suchen<input
-            v-model="variationSearch"
-            type="search"
-            placeholder="Name, ECO oder Züge"
-            @input="limit = 20"
-        /></label>
-        <p class="muted" aria-live="polite">
-          {{ variations.length }} Varianten
-        </p>
-        <ol class="variations">
-          <li
-            v-for="line in visible"
-            :key="line.id"
-            :data-testid="`line-${line.id}`"
-            class="line-card"
-          >
-            <div class="line-meta">
-              <span class="eco">{{ line.eco }}</span
-              ><span>{{ status(line.id) }}</span>
-            </div>
-            <h3>{{ line.name }}</h3>
-            <p class="moves">{{ line.moves.join(' ') }}</p>
-            <div class="actions">
-              <button
-                type="button"
-                class="primary"
-                :aria-label="`Lernen: ${line.name}`"
-                @click="practice(line.id, 'guided')"
-              >
-                Lernen</button
-              ><button
-                type="button"
-                :aria-label="`Sparring: ${line.name}`"
-                @click="practice(line.id, 'sparring')"
-              >
-                Sparring</button
-              ><button
-                type="button"
-                :aria-label="`Wiederholen: ${line.name}`"
-                @click="practice(line.id, 'review')"
-              >
-                Wiederholen
-              </button>
-            </div>
-          </li>
-        </ol>
-        <button
-          v-if="visible.length < variations.length"
-          type="button"
-          class="more"
-          @click="limit += 20"
-        >
-          Weitere Varianten ({{ variations.length - visible.length }})
-        </button>
-        <p v-if="!variations.length" class="empty">
-          Keine passende Variante gefunden.
-        </p>
-      </template>
+          <div class="actions">
+            <button
+              v-if="!learned(line)"
+              type="button"
+              class="primary"
+              :aria-label="`Lernen: ${line.name}`"
+              @click="practice(line.id, 'guided')"
+            >
+              Lernen
+            </button>
+            <button
+              type="button"
+              :aria-label="`Wiederholen: ${line.name}`"
+              @click="practice(line.id, 'review')"
+            >
+              Wiederholen
+            </button>
+          </div>
+        </li>
+        <li v-if="!visible.length" class="empty">
+          {{
+            filter === 'learned' && !search
+              ? 'Noch keine Variante gelernt.'
+              : 'Keine passenden Varianten.'
+          }}
+        </li>
+      </ol>
     </template>
   </section>
 </template>
-
 <style scoped>
 .library {
-  max-width: 1050px;
-  margin: auto;
-  color: #20382e;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  max-width: 760px;
+  margin: 0 auto;
+  color: var(--ink);
 }
 header {
-  margin-bottom: 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
 }
 h2 {
-  font-size: clamp(1.6rem, 4vw, 2.5rem);
-  margin: 0.3rem 0 0.65rem;
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: -0.03em;
 }
-header p {
-  color: #52675c;
-  line-height: 1.6;
-}
-.eyebrow {
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
-  font-weight: 700;
+.side {
+  font-size: 12px;
+  font-weight: 650;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
 }
 button,
 input {
   font: inherit;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
 }
 button {
+  min-height: 44px;
+  padding: 10px 14px;
   cursor: pointer;
-  border: 1px solid #ccd9d0;
-  background: #fff;
-  color: #20382e;
-  padding: 0.65rem 0.85rem;
-  border-radius: 0.65rem;
 }
 button:hover {
-  border-color: #297650;
+  border-color: var(--green);
 }
-button:focus-visible,
-input:focus-visible {
-  outline: 3px solid #7baf92;
-  outline-offset: 3px;
-}
-.topics,
-.actions {
+.recommendation {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+  padding: 14px 16px;
+  background: var(--soft-green);
+  border-color: #c8d6bb;
+  box-shadow: 0 2px 0 #d1ddc6;
+  flex-shrink: 0;
 }
-.topics {
-  margin-bottom: 1.2rem;
+.recommendation > span:first-child {
+  min-width: 0;
 }
-.topics button[aria-pressed='true'],
+.recommendation strong {
+  font-size: 16px;
+}
+.recommended-name {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.recommendation-arrow {
+  font-size: 24px;
+  color: var(--green);
+}
+.filters {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.filters button {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 650;
+}
+.filters [aria-pressed='true'],
 .primary {
-  background: #225b40;
-  color: #fff;
-  border-color: #225b40;
+  background: var(--green);
+  color: var(--paper);
+  border-color: var(--green);
 }
 .search {
-  display: grid;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-  font-weight: 600;
+  display: block;
+  flex-shrink: 0;
 }
 input {
-  background: white;
-  border: 1px solid #ccd9d0;
-  padding: 0.9rem;
-  border-radius: 0.7rem;
-  color: #20382e;
   width: 100%;
-  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 14px;
 }
-.muted,
-.line-meta {
-  color: #63766c;
-  font-size: 0.85rem;
-}
-.families {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
-  gap: 0.85rem;
-}
-.family-card {
-  text-align: left;
-  display: grid;
-  gap: 0.65rem;
-  padding: 1.2rem;
-}
-.family-card strong {
-  font-size: 1.08rem;
-}
-.family-card span {
-  font-size: 0.85rem;
-  color: #63766c;
-}
-.family-card .explore {
-  color: #225b40;
-}
-.back {
-  margin-bottom: 1.2rem;
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .variations {
-  list-style: none;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 2px 8px 0;
   margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.85rem;
+  list-style: none;
 }
 .line-card {
-  background: white;
-  border: 1px solid #dce4dd;
-  border-radius: 0.85rem;
-  padding: 1.15rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: 0 2px 0 #dce3d4;
 }
 .line-meta {
   display: flex;
   justify-content: space-between;
-  gap: 0.6rem;
-  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
 }
-.eco {
-  color: #225b40;
+.learned {
+  color: var(--green);
   font-weight: 700;
 }
 h3 {
-  margin: 0.75rem 0 0.5rem;
-  font-size: 1.08rem;
+  font-size: 15px;
+  line-height: 1.3;
+  margin: 8px 0;
 }
 .moves {
-  line-height: 1.7;
-  color: #53685d;
-  overflow-wrap: anywhere;
-  margin-bottom: 1rem;
+  font:
+    12px/1.5 ui-monospace,
+    monospace;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow-x: auto;
+  margin: 0 0 12px;
+  padding-bottom: 4px;
 }
-.more {
-  margin: 1.2rem auto;
-  display: block;
+.actions {
+  display: flex;
+  gap: 8px;
 }
+.actions button {
+  font-size: 13px;
+  padding: 8px 16px;
+}
+.all-learned,
 .empty {
-  padding: 2rem 0;
-  color: #63766c;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 12px 0;
+  margin: 0;
 }
 .error {
   background: #fff0e9;
-  padding: 1rem;
-  border-radius: 0.8rem;
+  padding: 16px;
+  border-radius: 12px;
 }
-@media (max-width: 420px) {
-  .actions button {
-    flex: 1;
-    padding: 0.65rem 0.4rem;
-    font-size: 0.85rem;
+@media (max-height: 680px) {
+  .library {
+    gap: 8px;
+  }
+  .recommendation {
+    padding: 10px 12px;
   }
 }
 </style>

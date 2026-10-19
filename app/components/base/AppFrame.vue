@@ -27,7 +27,7 @@ defineProps<{ active: 'learn' | 'library' | 'profile' }>()
           <path
             d="M12 6v14M3 5c4-1 6-1 9 1 3-2 5-2 9-1v14c-4-1-6-1-9 1-3-2-5-2-9-1V5Z"
           /></svg
-        >Eröffnungen</NuxtLink
+        >Bibliothek</NuxtLink
       >
       <NuxtLink
         to="/profile"

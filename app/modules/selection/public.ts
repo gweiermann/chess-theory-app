@@ -15,6 +15,7 @@ export interface LessonChoice {
 }
 export interface ReplyInput extends SelectionInput {
   history: readonly string[]
+  /** Include unfamiliar paths in equal-depth ties; never limits playable depth. */
   allowNew: boolean
 }
 export interface ReplyChoice {

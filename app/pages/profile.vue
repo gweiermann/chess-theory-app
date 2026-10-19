@@ -1,31 +1,36 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppFrame from '../components/base/AppFrame.vue'
 import SettingsPanel from '../components/learning/SettingsPanel.vue'
 import type { Mode, Settings, Side } from '../modules/shared'
+import { terminalLines } from '../modules/openings'
 const workspace = useWorkspace()
 const saving = ref(false)
 const message = ref('')
 const error = ref(false)
 const lineNames = ref<Record<string, string>>({})
+const lessonIds = ref(new Set<string>())
+const currentProgress = computed(() =>
+  Object.fromEntries(
+    Object.entries(workspace.learning.value?.progress ?? {}).filter(
+      ([, record]) => lessonIds.value.has(record.lineId),
+    ),
+  ),
+)
+const currentActivity = computed(() =>
+  (workspace.learning.value?.activity ?? []).filter(
+    (event) => lineNames.value[event.lineId],
+  ),
+)
 const load = async () => {
   error.value = false
   try {
     await workspace.initialize()
-    const families = [
-      ...new Set(
-        workspace.learning
-          .value!.activity.slice(-50)
-          .map((event) => event.familyId),
-      ),
-    ]
-    for (const id of families) {
-      try {
-        const family = await workspace.library.family(id)
-        for (const line of family.lines) lineNames.value[line.id] = line.name
-      } catch {
-        /* Removed source records stay visible as unavailable practice. */
-      }
+    for (const summary of workspace.catalog.value!.families) {
+      const family = await workspace.library.family(summary.id)
+      for (const line of family.lines) lineNames.value[line.id] = line.name
+      for (const line of terminalLines(family.lines))
+        lessonIds.value.add(line.id)
     }
   } catch {
     error.value = true
@@ -72,8 +77,8 @@ const resume = (item: {
     <div v-else-if="workspace.learning.value" class="profile-panel">
       <SettingsPanel
         :settings="workspace.learning.value.settings"
-        :activity="workspace.learning.value.activity"
-        :progress="workspace.learning.value.progress"
+        :activity="currentActivity"
+        :progress="currentProgress"
         :line-names="lineNames"
         :saving="saving"
         @save="save"

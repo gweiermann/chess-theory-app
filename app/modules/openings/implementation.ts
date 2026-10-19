@@ -2,6 +2,24 @@ import { Chess } from 'chess.js'
 import type { Catalog, Family, OpeningLine } from '../shared'
 import type { OpeningLibrary, Repertoire } from './public'
 
+/** One representative per maximal SAN path; named prefixes are not lessons. */
+export function terminalLines(lines: readonly OpeningLine[]): OpeningLine[] {
+  const unique = new Map<string, OpeningLine>()
+  for (const line of [...lines].sort((a, b) => a.id.localeCompare(b.id))) {
+    const key = JSON.stringify([line.familyId, line.moves])
+    if (!unique.has(key)) unique.set(key, line)
+  }
+  return [...unique.values()].filter(
+    (line) =>
+      !lines.some(
+        (other) =>
+          other.familyId === line.familyId &&
+          other.moves.length > line.moves.length &&
+          line.moves.every((move, index) => other.moves[index] === move),
+      ),
+  )
+}
+
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
 const text = (value: unknown): value is string =>

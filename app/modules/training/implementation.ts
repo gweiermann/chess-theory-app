@@ -1,4 +1,4 @@
-import { createRepertoire } from '../openings'
+import { createRepertoire, terminalLines } from '../openings'
 import { chooseReply, recommendMove } from '../selection'
 import { isSavedSession } from '../learning'
 import { progressKey } from '../shared'
@@ -25,6 +25,9 @@ export function createTraining(options: TrainingOptions): TrainingController {
   const random = options.random ?? Math.random
   const progress = options.learning?.progress ?? {}
   const memories = options.learning?.memories ?? {}
+  const fullLines = terminalLines(family.lines).sort(
+    (a, b) => b.moves.length - a.moves.length || a.id.localeCompare(b.id),
+  )
   const listeners = new Set<() => void>()
   const pendingOutcomes = new Map<string, LearningOutcome>()
   let persistence = Promise.resolve()
@@ -73,11 +76,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
         progress[progressKey(line.id, state.side)]?.status === 'mastered',
     )
   const repertoireLines = () =>
-    state.mode === 'sparring'
-      ? settings.allowNew || !learned().length
-        ? family.lines
-        : learned()
-      : [state.line]
+    state.mode === 'sparring' ? fullLines : [state.line]
   const repertoire = () => createRepertoire(repertoireLines())
   const saveError = (message: string) => {
     state.persistenceError = message
@@ -186,12 +185,18 @@ export function createTraining(options: TrainingOptions): TrainingController {
   const updateChoices = () => {
     const position = board.snapshot()
     const choices = repertoire().continuations(position.moves)
+    if (state.mode === 'sparring') {
+      const longest = repertoire().matching(position.moves)[0]
+      if (longest) state.line = longest
+    }
     state.available = choices
     state.expectedSan = choices[0] ?? null
     state.newMaterial =
       state.phase === 'sparring' &&
-      !learned().some((line) =>
-        position.moves.every((move, index) => line.moves[index] === move),
+      !learned().some(
+        (line) =>
+          line.moves.length > position.moves.length &&
+          position.moves.every((move, index) => line.moves[index] === move),
       )
   }
   const schedule = (callback: () => void, delay: number) => {
@@ -292,7 +297,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
         const reply =
           state.mode === 'sparring'
             ? chooseReply({
-                lines: repertoireLines(),
+                lines: family.lines,
                 history: board.snapshot().moves,
                 side: state.side,
                 mode: state.mode,
@@ -358,7 +363,17 @@ export function createTraining(options: TrainingOptions): TrainingController {
       attempt,
       helped,
       suggested,
-      newMaterial: state.newMaterial,
+      newMaterial:
+        state.mode === 'sparring'
+          ? !learned().some(
+              (line) =>
+                board
+                  .snapshot()
+                  .moves.every((san, index) => line.moves[index] === san) &&
+                line.moves[board.snapshot().moves.length] ===
+                  result.attempt.san,
+            )
+          : state.newMaterial,
     })
     if (!decision.accepted) {
       board.rejectMove(result.attempt.id)
@@ -406,7 +421,15 @@ export function createTraining(options: TrainingOptions): TrainingController {
       cancel()
       writer = (sessionWriters.get(repository) ?? 0) + 1
       sessionWriters.set(repository, writer)
-      const line = family.lines.find((line) => line.id === lineId)
+      const requested = family.lines.find((line) => line.id === lineId)
+      const line =
+        requested && mode === 'guided'
+          ? (fullLines.find((candidate) =>
+              requested.moves.every(
+                (move, index) => candidate.moves[index] === move,
+              ),
+            ) ?? requested)
+          : requested
       if (!line) {
         state.status = 'error'
         notify()
@@ -498,7 +521,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
           saved.familyId === family.summary.id &&
           saved.side === side &&
           saved.mode === mode &&
-          saved.lineId === lineId &&
+          saved.lineId === line.id &&
           createRepertoire(
             mode === 'sparring' ? repertoireLines() : [line],
           ).matching(saved.moves).length > 0 &&

@@ -35,20 +35,46 @@ const library: OpeningLibrary = {
 }
 
 describe('opening library browser', () => {
+  it('opens Italian directly and offers only unique complete variations', async () => {
+    const leaf = family.lines[0]!
+    const expanded: Family = {
+      ...family,
+      lines: [
+        { ...leaf, id: 'prefix', moves: leaf.moves.slice(0, 5) },
+        leaf,
+        { ...leaf, id: 'duplicate', name: 'Same moves under another name' },
+      ],
+    }
+    const wrapper = mount(LibraryBrowser, {
+      props: {
+        catalog,
+        library: { ...library, family: async () => expanded },
+        progress: {},
+        side: 'white',
+      },
+    })
+    await flushPromises()
+    expect(wrapper.findAll('.line-card')).toHaveLength(1)
+    expect(wrapper.find('[data-testid="line-prefix"]').exists()).toBe(false)
+    await wrapper
+      .get('button[aria-label="Nächste Variante lernen"]')
+      .trigger('click')
+    expect(wrapper.emitted('practice')?.[0]).toEqual([
+      { familyId: 'italian', lineId: 'classical', mode: 'guided' },
+    ])
+  })
   it('finds a family, loads its variations and starts the requested mode', async () => {
     const wrapper = mount(LibraryBrowser, {
       props: { catalog, library, progress: {}, side: 'white' },
     })
-    await wrapper.get('input[type="search"]').setValue('italian')
-    await wrapper.get('[data-testid="family-italian"]').trigger('click')
     await flushPromises()
     const row = wrapper.get('[data-testid="line-classical"]')
-    expect(row.text()).toContain('C50')
+    expect(row.text()).toContain('3 Züge')
     await row
-      .get('button[aria-label="Sparring: Italian Game: Classical"]')
+      .get('button[aria-label="Wiederholen: Italian Game: Classical"]')
       .trigger('click')
     expect(wrapper.emitted('practice')).toEqual([
-      [{ familyId: 'italian', lineId: 'classical', mode: 'sparring' }],
+      [{ familyId: 'italian', lineId: 'classical', mode: 'review' }],
     ])
   })
   it('offers retry after a failed family load', async () => {
@@ -63,14 +89,13 @@ describe('opening library browser', () => {
     const wrapper = mount(LibraryBrowser, {
       props: { catalog, library: adapter, progress: {}, side: 'white' },
     })
-    await wrapper.get('[data-testid="family-italian"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('nicht geladen')
     await wrapper.get('[role="alert"] button').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="line-classical"]').exists()).toBe(true)
   })
-  it('does not reveal an obsolete request after returning to the catalog', async () => {
+  it('ignores an obsolete family request after the library adapter changes', async () => {
     let resolveFamily!: (value: Family) => void
     const adapter = {
       ...library,
@@ -82,40 +107,60 @@ describe('opening library browser', () => {
     const wrapper = mount(LibraryBrowser, {
       props: { catalog, library: adapter, progress: {}, side: 'white' },
     })
-    await wrapper.get('[data-testid="family-italian"]').trigger('click')
     expect(wrapper.get('[role="status"]').text()).toContain('geladen')
-    await wrapper.get('button.back').trigger('click')
-    resolveFamily(family)
+    await wrapper.setProps({ library })
     await flushPromises()
-    expect(wrapper.find('[data-testid="line-classical"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="family-italian"]').exists()).toBe(true)
+    resolveFamily({
+      ...family,
+      lines: [{ ...family.lines[0]!, id: 'obsolete' }],
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="line-classical"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="line-obsolete"]').exists()).toBe(false)
   })
-  it('paginates long families while searching all variations', async () => {
-    const longFamily: Family = {
-      summary: { ...family.summary, lineCount: 45 },
-      lines: Array.from({ length: 45 }, (_, index) => ({
-        ...family.lines[0]!,
-        id: `variation-${index}`,
-        name: `Italian Game: Variation ${index}`,
-      })),
-    }
+  it('filters learned paths by side and keeps mastered prefixes out of new lessons', async () => {
+    const leaf = family.lines[0]!
     const wrapper = mount(LibraryBrowser, {
       props: {
         catalog,
-        library: { ...library, family: async () => longFamily },
-        progress: {},
-        side: 'black',
+        library: {
+          ...library,
+          family: async () => ({
+            ...family,
+            lines: [
+              { ...leaf, id: 'prefix', moves: leaf.moves.slice(0, 5) },
+              leaf,
+            ],
+          }),
+        },
+        progress: {
+          'white:classical': {
+            lineId: 'classical',
+            side: 'white',
+            status: 'mastered',
+            cleanRepetitions: 5,
+            lastPracticedAt: 1,
+          },
+        },
+        side: 'white',
       },
     })
-    await wrapper.get('[data-testid="family-italian"]').trigger('click')
     await flushPromises()
-    expect(wrapper.findAll('.line-card')).toHaveLength(20)
-    await wrapper.get('button.more').trigger('click')
-    expect(wrapper.findAll('.line-card')).toHaveLength(40)
-    await wrapper.get('input[type="search"]').setValue('Variation 44')
+    expect(wrapper.findAll('.line-card')).toHaveLength(0)
+    expect(wrapper.text()).toContain('Alle Varianten gelernt.')
+    expect(
+      wrapper.find('button[aria-label="Nächste Variante lernen"]').exists(),
+    ).toBe(false)
+    await wrapper.get('.filters button:nth-child(2)').trigger('click')
     expect(wrapper.findAll('.line-card')).toHaveLength(1)
-    expect(wrapper.get('[data-testid="line-variation-44"]').text()).toContain(
-      'Noch nicht geübt',
-    )
+    expect(wrapper.get('.line-card').text()).toContain('Gelernt')
+    await wrapper.setProps({ side: 'black' })
+    expect(wrapper.findAll('.line-card')).toHaveLength(0)
+    await wrapper.get('.filters button:first-child').trigger('click')
+    expect(wrapper.findAll('.line-card')).toHaveLength(1)
+    await wrapper.get('input[type="search"]').setValue('not an opening')
+    expect(wrapper.findAll('.line-card')).toHaveLength(0)
+    await wrapper.get('input[type="search"]').setValue('Bc5')
+    expect(wrapper.findAll('.line-card')).toHaveLength(1)
   })
 })

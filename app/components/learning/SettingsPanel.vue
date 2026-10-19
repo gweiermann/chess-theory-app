@@ -143,13 +143,6 @@ function save() {
           >
           <label class="check"
             ><input
-              v-model="draft.allowNew"
-              name="allowNew"
-              type="checkbox"
-            /><span>Nahe neue Varianten im Sparring entdecken</span></label
-          >
-          <label class="check"
-            ><input
               v-model="draft.premoves"
               name="premoves"
               type="checkbox"

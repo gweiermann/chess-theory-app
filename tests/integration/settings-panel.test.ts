@@ -27,10 +27,10 @@ describe('learning settings', () => {
     const wrapper = mount(SettingsPanel, { props: { settings } })
     await wrapper.get('select[name="side"]').setValue('black')
     await wrapper.get('input[name="repetitions"]').setValue('3')
-    await wrapper.get('input[name="allowNew"]').setValue(true)
+    await wrapper.get('input[name="premoves"]').setValue(false)
     await wrapper.get('form').trigger('submit')
     expect(wrapper.emitted('save')).toEqual([
-      [{ ...DEFAULT_SETTINGS, side: 'black', repetitions: 3, allowNew: true }],
+      [{ ...DEFAULT_SETTINGS, side: 'black', repetitions: 3, premoves: false }],
     ])
     expect(settings).toEqual(DEFAULT_SETTINGS)
   })

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFile, mkdir, writeFile } from 'node:fs/promises'
+import { readFile, mkdir, writeFile, readdir, unlink } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Chess } from 'chess.js'
@@ -79,11 +79,14 @@ export async function buildOpenings(root = process.cwd()): Promise<Catalog> {
     ),
   )
   const revision = hash(
-    contents.map((text, index) => `${sourceFiles[index]}\0${text}`).join('\0'),
+    'italian-only-v1\0' +
+      contents
+        .map((text, index) => `${sourceFiles[index]}\0${text}`)
+        .join('\0'),
   )
-  const lines = contents.flatMap((text, index) =>
-    parseSource(text, sourceFiles[index]!),
-  )
+  const lines = contents
+    .flatMap((text, index) => parseSource(text, sourceFiles[index]!))
+    .filter((line) => line.name.split(':')[0]!.trim() === 'Italian Game')
   const groups = new Map<string, OpeningLine[]>()
   for (const line of lines)
     groups.set(line.familyId, [...(groups.get(line.familyId) ?? []), line])
@@ -114,6 +117,13 @@ export async function buildOpenings(root = process.cwd()): Promise<Catalog> {
   }
   const output = resolve(root, 'public/data')
   await mkdir(resolve(output, 'families'), { recursive: true })
+  const activeFiles = new Set(
+    families.map((family) => `${family.summary.id}.json`),
+  )
+  // Remove obsolete generated families when narrowing the delivered repertoire.
+  for (const filename of await readdir(resolve(output, 'families')))
+    if (filename.endsWith('.json') && !activeFiles.has(filename))
+      await unlink(resolve(output, 'families', filename))
   await Promise.all(
     families.map((family) =>
       writeFile(
@@ -128,6 +138,7 @@ export async function buildOpenings(root = process.cwd()): Promise<Catalog> {
     JSON.stringify(
       {
         version: 1,
+        scope: 'Italian Game',
         revision,
         source: {
           url: 'https://github.com/lichess-org/chess-openings',

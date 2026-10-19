@@ -107,7 +107,7 @@ describe('opening source preservation', () => {
     )
     expect(await library.line(family.summary.id, 'absent')).toBeNull()
   })
-  it('delivers every vendored source record including all 187 Italian variations', async () => {
+  it('delivers only the 187 Italian Game records with their original identities', async () => {
     const sources = await Promise.all(
       ['a', 'b', 'c', 'd', 'e'].map(async (name) =>
         parseSource(
@@ -125,7 +125,10 @@ describe('opening source preservation', () => {
     const delivered = JSON.parse(
       await readFile(resolve('public/data/catalog.json'), 'utf8'),
     ) as Catalog
-    expect(delivered.lineCount).toBe(3865)
+    expect(delivered.lineCount).toBe(187)
+    expect(delivered.families.map((family) => family.name)).toEqual([
+      'Italian Game',
+    ])
     const records = await Promise.all(
       delivered.families.map(async (summary) => {
         const content = JSON.parse(
@@ -143,7 +146,12 @@ describe('opening source preservation', () => {
         .flat()
         .map((line) => line.id)
         .sort(),
-    ).toEqual(sourceLines.map((line) => line.id).sort())
+    ).toEqual(
+      sourceLines
+        .filter((line) => line.name.split(':')[0] === 'Italian Game')
+        .map((line) => line.id)
+        .sort(),
+    )
   }, 20000)
   it('allows retry after a failed request instead of caching failure permanently', async () => {
     let calls = 0
