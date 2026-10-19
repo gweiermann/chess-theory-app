@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSource } from '../../scripts/build-openings'
+import { parseSource, selectCourse } from '../../scripts/build-openings'
 import {
   createMemoryLibrary,
   createRepertoire,
@@ -31,6 +31,54 @@ const catalog: Catalog = {
 }
 
 describe('opening source preservation', () => {
+  it('derives course membership from its shortest source anchor, regardless of variation names', () => {
+    const records = parseSource(
+      [
+        'eco\tname\tpgn',
+        'C50\tItalian Game\t1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5',
+        'C50\tItalian Game\t1. e4 e5 2. Nf3 Nc6 3. Bc4',
+        'C56\tItalian Game: Scotch Gambit\t1. e4 e5 2. Nf3 Nc6 3. d4 exd4 4. Bc4',
+        'C44\tScotch Game: Transposed position\t1. e4 e5 2. Nf3 Nc6 3. Bc4 Nf6 4. d4 exd4',
+      ].join('\n'),
+      'fixture',
+    )
+    const original = structuredClone(records)
+    const course = selectCourse(records, 'Italian Game')
+    expect(course.summary.lineCount).toBe(3)
+    expect(course.lines.map((line) => line.id)).toEqual([
+      records[0]!.id,
+      records[1]!.id,
+      records[3]!.id,
+    ])
+    expect(course.lines[2]).toEqual({
+      ...records[3],
+      familyId: records[1]!.familyId,
+    })
+    expect(
+      selectCourse([...records].reverse(), 'Italian Game')
+        .lines.map((line) => line.id)
+        .sort(),
+    ).toEqual(course.lines.map((line) => line.id).sort())
+    expect(records).toEqual(original)
+  })
+  it('fails explicitly when a course has no unique shortest source anchor', () => {
+    expect(() => selectCourse(lines, 'Unknown Opening')).toThrow(
+      'Missing course anchor',
+    )
+    const ambiguous = parseSource(
+      'eco\tname\tpgn\nC00\tExample\t1. e4 e5\nB00\tExample\t1. e4 c5',
+      'fixture',
+    )
+    expect(() => selectCourse(ambiguous, 'Example')).toThrow(
+      'Ambiguous course anchor',
+    )
+    expect(
+      selectCourse(
+        [...lines, { ...lines[0]!, id: 'duplicate' }],
+        'Italian Game',
+      ).lines,
+    ).toHaveLength(3)
+  })
   it('preserves variations sharing a display name with different moves', () => {
     const records = parseSource(
       'eco\tname\tpgn\nC00\tFrench Defense\t1. e4 e6\nC00\tFrench Defense\t1. e4 e6 2. d4 d5',
@@ -107,7 +155,7 @@ describe('opening source preservation', () => {
     )
     expect(await library.line(family.summary.id, 'absent')).toBeNull()
   })
-  it('delivers only the 187 Italian Game records with their original identities', async () => {
+  it('delivers every Italian move-order descendant with original identities and names', async () => {
     const sources = await Promise.all(
       ['a', 'b', 'c', 'd', 'e'].map(async (name) =>
         parseSource(
@@ -125,7 +173,7 @@ describe('opening source preservation', () => {
     const delivered = JSON.parse(
       await readFile(resolve('public/data/catalog.json'), 'utf8'),
     ) as Catalog
-    expect(delivered.lineCount).toBe(187)
+    expect(delivered.lineCount).toBe(184)
     expect(delivered.families.map((family) => family.name)).toEqual([
       'Italian Game',
     ])
@@ -148,10 +196,20 @@ describe('opening source preservation', () => {
         .sort(),
     ).toEqual(
       sourceLines
-        .filter((line) => line.name.split(':')[0] === 'Italian Game')
+        .filter((line) =>
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'].every(
+            (move, index) => line.moves[index] === move,
+          ),
+        )
         .map((line) => line.id)
         .sort(),
     )
+    for (const line of records.flat()) {
+      const original = sourceLines.find((source) => source.id === line.id)!
+      expect(line.name).toBe(original.name)
+      expect(line.moves).toEqual(original.moves)
+      expect(line.familyId).toBe(delivered.families[0]!.id)
+    }
   }, 20000)
   it('allows retry after a failed request instead of caching failure permanently', async () => {
     let calls = 0

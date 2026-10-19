@@ -1,5 +1,5 @@
 import { createRepertoire, terminalLines } from '../openings'
-import { chooseReply, recommendMove } from '../selection'
+import { chooseReply, recommendMove, orderLearningLines } from '../selection'
 import { isSavedSession } from '../learning'
 import { progressKey } from '../shared'
 import type { LearningOutcome, MoveInput, SavedSession } from '../shared'
@@ -424,11 +424,15 @@ export function createTraining(options: TrainingOptions): TrainingController {
       const requested = family.lines.find((line) => line.id === lineId)
       const line =
         requested && mode === 'guided'
-          ? (fullLines.find((candidate) =>
-              requested.moves.every(
-                (move, index) => candidate.moves[index] === move,
+          ? (orderLearningLines({
+              lines: family.lines.filter((candidate) =>
+                requested.moves.every(
+                  (move, index) => candidate.moves[index] === move,
+                ),
               ),
-            ) ?? requested)
+              progress,
+              side,
+            })[0] ?? requested)
           : requested
       if (!line) {
         state.status = 'error'

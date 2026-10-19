@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { terminalLines, createRepertoire } from '../../modules/openings'
+import { createRepertoire } from '../../modules/openings'
 import type {
   Catalog,
   Family,
   OpeningLibrary,
   OpeningLine,
 } from '../../modules/openings'
-import { chooseLesson } from '../../modules/selection'
+import { chooseLesson, orderLearningLines } from '../../modules/selection'
 import type { Mode, Progress, Side } from '../../modules/shared'
 import { progressKey } from '../../modules/shared'
 
@@ -38,12 +38,11 @@ const learnedPaths = computed(() =>
 const learned = (line: OpeningLine) =>
   learnedPaths.value.matching(line.moves).length > 0
 const lines = computed(() =>
-  terminalLines(selected.value?.lines ?? []).sort(
-    (a, b) =>
-      b.moves.length - a.moves.length ||
-      a.name.localeCompare(b.name) ||
-      a.id.localeCompare(b.id),
-  ),
+  orderLearningLines({
+    lines: selected.value?.lines ?? [],
+    progress: props.progress,
+    side: props.side,
+  }),
 )
 const next = computed(
   () =>

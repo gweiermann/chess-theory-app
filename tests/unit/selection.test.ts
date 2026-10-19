@@ -26,6 +26,36 @@ const lines: OpeningLine[] = [
   },
 ]
 describe('lesson selection', () => {
+  it('starts with the shortest complete path, excluding shorter prefixes and duplicate paths', () => {
+    const shortLeaf = {
+      ...lines[0]!,
+      id: 'short-leaf',
+      moves: [...lines[0]!.moves, 'Nf6', 'Ng5'],
+    }
+    const longLeaf = {
+      ...lines[1]!,
+      id: 'long-leaf',
+      moves: [...lines[1]!.moves, 'c3', 'Nf6', 'd4'],
+    }
+    const selected = chooseLesson({
+      lines: [...lines, longLeaf, shortLeaf, { ...shortLeaf, id: 'z-alias' }],
+      side: 'white',
+      mode: 'guided',
+      progress: {
+        'white:long-leaf': {
+          lineId: 'long-leaf',
+          side: 'white',
+          status: 'practicing',
+          cleanRepetitions: 0,
+          lastPracticedAt: 99,
+        },
+      },
+      memories: {},
+      now: 100,
+      random: () => 0,
+    })
+    expect(selected?.line.id).toBe('short-leaf')
+  })
   it('never offers learned paths again under a prefix or duplicate record name', () => {
     const alias = {
       ...lines[1]!,
@@ -79,7 +109,7 @@ describe('lesson selection', () => {
     })
     expect(reply).toEqual({ san: 'Nf6', newMaterial: true })
   })
-  it('continues with the deepest unlearned sibling, including after reopening learning', () => {
+  it('prioritizes proximity over length, then picks the shortest equally nearby sibling after reopening', () => {
     const trunk = [
       ...lines[1]!.moves,
       'c3',
@@ -94,20 +124,13 @@ describe('lesson selection', () => {
       { ...lines[0]!, id: 'sibling', moves: [...trunk, 'Bd2'] },
       {
         ...lines[0]!,
+        id: 'long-sibling',
+        moves: [...trunk, 'Kf1', 'Nxe4', 'Qb3'],
+      },
+      {
+        ...lines[0]!,
         id: 'farther',
-        moves: [
-          ...lines[0]!.moves,
-          'Nf6',
-          'Ng5',
-          'd5',
-          'exd5',
-          'Na5',
-          'Bb5+',
-          'c6',
-          'dxc6',
-          'bxc6',
-          'Be2',
-        ],
+        moves: [...lines[0]!.moves, 'Nf6'],
       },
     ]
     const input = {
@@ -132,7 +155,7 @@ describe('lesson selection', () => {
     )
     expect(chooseLesson(input)?.line.id).toBe('sibling')
   })
-  it('teaches the longest continuation and does not treat White mastery as Black mastery', () => {
+  it('excludes intermediate lines and does not treat White mastery as Black mastery', () => {
     const selected = chooseLesson({
       lines,
       side: 'black',

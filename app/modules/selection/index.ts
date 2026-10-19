@@ -1,2 +1,7 @@
 export * from './public'
-export { chooseLesson, chooseReply, recommendMove } from './implementation'
+export {
+  chooseLesson,
+  chooseReply,
+  recommendMove,
+  orderLearningLines,
+} from './implementation'

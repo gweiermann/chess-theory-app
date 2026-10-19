@@ -35,6 +35,42 @@ const library: OpeningLibrary = {
 }
 
 describe('opening library browser', () => {
+  it('lists the shortest complete variation first rather than its shorter named prefixes', async () => {
+    const base = family.lines[0]!
+    const short = {
+      ...base,
+      id: 'short',
+      name: 'Short complete line',
+      moves: [...base.moves.slice(0, 5), 'Nf6', 'Ng5'],
+    }
+    const long = {
+      ...base,
+      id: 'long',
+      name: 'Long complete line',
+      moves: [...base.moves, 'c3', 'Nf6', 'd4'],
+    }
+    const wrapper = mount(LibraryBrowser, {
+      props: {
+        catalog,
+        library: {
+          ...library,
+          family: async () => ({ ...family, lines: [base, long, short] }),
+        },
+        progress: {},
+        side: 'white',
+      },
+    })
+    await flushPromises()
+    expect(
+      wrapper.findAll('.line-card').map((row) => row.attributes('data-testid')),
+    ).toEqual(['line-short', 'line-long'])
+    await wrapper
+      .get('button[aria-label="Nächste Variante lernen"]')
+      .trigger('click')
+    expect(wrapper.emitted('practice')?.[0]).toEqual([
+      { familyId: 'italian', lineId: 'short', mode: 'guided' },
+    ])
+  })
   it('opens Italian directly and offers only unique complete variations', async () => {
     const leaf = family.lines[0]!
     const expanded: Family = {
