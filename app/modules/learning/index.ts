@@ -4,3 +4,5 @@ export {
   createMemoryRepository,
   isSavedSession,
 } from './implementation'
+
+export { nextMemory } from './review'

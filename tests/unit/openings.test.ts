@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { parseSource, selectCourse } from '../../scripts/build-openings'
+import {
+  parseSource,
+  selectCourse,
+  buildOpenings,
+} from '../../scripts/build-openings'
 import {
   createMemoryLibrary,
   createRepertoire,
   createOpeningLibrary,
 } from '../../app/modules/openings'
 import type { Catalog, Family } from '../../app/modules/shared'
-import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { readFile, mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { resolve, dirname } from 'node:path'
 
 const lines = parseSource(
   'eco\tname\tpgn\nC50\tItalian Game\t1. e4 e5 2. Nf3 Nc6 3. Bc4\nC50\tItalian Game\t1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5',
@@ -31,6 +35,37 @@ const catalog: Catalog = {
 }
 
 describe('opening source preservation', () => {
+  it('builds identical course revisions from LF and CRLF checkouts', async () => {
+    const cache = resolve('.cache')
+    await mkdir(cache, { recursive: true })
+    const root = await mkdtemp(resolve(cache, 'opening-line-endings-'))
+    try {
+      const results = []
+      for (const newline of ['\n', '\r\n']) {
+        const source = resolve(root, 'data/source')
+        await mkdir(source, { recursive: true })
+        for (const letter of ['a', 'b', 'c', 'd', 'e'])
+          await writeFile(
+            resolve(source, `${letter}.tsv`),
+            [
+              'eco\tname\tpgn',
+              ...(letter === 'c'
+                ? ['C50\tItalian Game\t1. e4 e5 2. Nf3 Nc6 3. Bc4']
+                : []),
+              '',
+            ].join(newline),
+          )
+        await buildOpenings(root)
+        results.push(
+          await readFile(resolve(root, 'public/data/catalog.json'), 'utf8'),
+        )
+      }
+      expect(results[0]).toBe(results[1])
+    } finally {
+      if (dirname(root) === cache)
+        await rm(root, { recursive: true, force: true })
+    }
+  })
   it('derives course membership from its shortest source anchor, regardless of variation names', () => {
     const records = parseSource(
       [

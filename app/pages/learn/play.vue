@@ -4,6 +4,8 @@ import TrainingPanel from '../../components/training/TrainingPanel.vue'
 import knightIcon from '../../assets/pieces/wN.svg'
 import { createBoard } from '../../modules/board'
 import { createTraining } from '../../modules/training'
+import { loadMistakeBook } from '../../modules/mistakes'
+import type { MistakeBook } from '../../modules/mistakes'
 import { chooseLesson } from '../../modules/selection'
 import type { BoardSnapshot } from '../../modules/board'
 import type {
@@ -19,6 +21,7 @@ import type {
 const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspace()
+const base = useRuntimeConfig().app.baseURL
 const board = createBoard()
 const boardState = shallowRef<BoardSnapshot>(board.snapshot())
 const state = shallowRef<TrainingSnapshot | null>(null)
@@ -26,6 +29,7 @@ const family = shallowRef<Family | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 let training: TrainingController | null = null
+let mistakeBook: MistakeBook | undefined
 let unsubscribe: (() => void) | undefined
 const unsubscribeBoard = board.subscribe(() => {
   boardState.value = board.snapshot()
@@ -44,6 +48,7 @@ const begin = async (lineId: string, mode: Mode, saved?: SavedSession) => {
     repository: workspace.repository,
     family: family.value!,
     learning,
+    mistakeBook,
     settings: { ...learning.settings, side },
     datasetRevision: workspace.catalog.value!.revision,
   })
@@ -85,9 +90,18 @@ const load = async () => {
         'Diese Zugfolge ist nicht mehr verfügbar. Wähle eine andere in der Bibliothek.',
       )
     const mode: Mode =
-      route.query.mode === 'sparring' || route.query.mode === 'review'
+      route.query.mode === 'sparring' ||
+      route.query.mode === 'review' ||
+      route.query.mode === 'mistakes'
         ? route.query.mode
         : 'guided'
+    if (mode === 'mistakes')
+      mistakeBook = await loadMistakeBook({
+        family: loaded,
+        openingRevision: workspace.catalog.value!.revision,
+        baseUrl: `${base}data`,
+      })
+    if (disposed) return
     await begin(
       line.id,
       mode,
@@ -115,6 +129,7 @@ const next = async () => {
     lines: family.value!.lines,
     progress: learning.progress,
     memories: learning.memories,
+    activity: learning.activity,
     side: current.side,
     mode: current.mode,
     now: Date.now(),

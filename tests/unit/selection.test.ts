@@ -175,7 +175,7 @@ describe('lesson selection', () => {
     })
     expect(selected?.line.id).toBe('classical')
   })
-  it('prefers a familiar opponent reply among equally deep continuations', () => {
+  it('prefers an unfamiliar opponent branch even with the legacy familiarity setting', () => {
     const candidates = [
       {
         ...lines[0]!,
@@ -207,8 +207,8 @@ describe('lesson selection', () => {
       random: () => 0.99,
       allowNew: false,
     })
-    expect(result?.san).toBe('Bc5')
-    expect(result?.newMaterial).toBe(false)
+    expect(result?.san).toBe('Nf6')
+    expect(result?.newMaterial).toBe(true)
   })
   it('recommends difficult responses without forbidding the alternatives', () => {
     const suggestion = recommendMove({
@@ -229,7 +229,7 @@ describe('lesson selection', () => {
     })
     expect(suggestion).toEqual({ san: 'c3', reason: 'difficult' })
   })
-  it('steers the opponent toward difficult future responses while keeping alternatives possible', () => {
+  it('leaves difficult familiar responses for review while exploring unseen ones', () => {
     const candidates = [
       {
         ...lines[0]!,
@@ -256,7 +256,7 @@ describe('lesson selection', () => {
       random: () => 0.55,
       allowNew: true,
     }
-    expect(chooseReply(input)?.san).toBe('Bc5')
+    expect(chooseReply(input)?.san).toBe('Nf6')
     expect(chooseReply({ ...input, random: () => 0.999 })?.san).toBe('Nf6')
   })
 })

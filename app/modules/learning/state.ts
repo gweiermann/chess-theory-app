@@ -41,7 +41,7 @@ const count = (value: unknown, maximum = 1e9): value is number =>
 const timestamp = (value: unknown) => count(value, 8.64e15)
 const side = (value: unknown) => value === 'white' || value === 'black'
 const mode = (value: unknown) =>
-  ['guided', 'sparring', 'review'].includes(value as string)
+  ['guided', 'sparring', 'review', 'mistakes'].includes(value as string)
 const safeKeys = (value: Record<string, unknown>) =>
   Object.keys(value).every(
     (key) =>
@@ -102,14 +102,17 @@ export function validOutcome(value: unknown): value is LearningOutcome {
         'cleanRepetitions',
         'datasetRevision',
       ],
-      ['kind', 'requiredRepetitions'],
+      ['kind', 'requiredRepetitions', 'practiceIntent'],
     ) &&
+    (!Object.hasOwn(value, 'practiceIntent') ||
+      ['explore', 'review'].includes(value.practiceIntent as string)) &&
     (!Object.hasOwn(value, 'requiredRepetitions') ||
       (count(value.requiredRepetitions, 20) &&
         value.requiredRepetitions >= 1)) &&
     (!Object.hasOwn(value, 'kind') ||
       value.kind === 'response' ||
-      value.kind === 'round') &&
+      value.kind === 'round' ||
+      value.kind === 'exposure') &&
     [
       'id',
       'lineId',
@@ -158,8 +161,10 @@ export function validSession(value: unknown): value is SavedSession | null {
         'repetitionMistakes',
         'repetitionAssisted',
       ],
-      ['pendingReset'],
+      ['pendingReset', 'challenge', 'practiceIntent'],
     ) ||
+    (Object.hasOwn(value, 'practiceIntent') &&
+      !['explore', 'review'].includes(value.practiceIntent as string)) ||
     (Object.hasOwn(value, 'pendingReset') &&
       typeof value.pendingReset !== 'boolean') ||
     value.version !== 1 ||
@@ -188,10 +193,23 @@ export function validSession(value: unknown): value is SavedSession | null {
     !['helped', 'allowNew', 'repetitionAssisted'].every(
       (key) => typeof value[key] === 'boolean',
     ) ||
-    !['guided', 'recall', 'sparring'].includes(value.phase as string) ||
-    (value.mode === 'guided' && value.phase === 'sparring') ||
+    !['guided', 'recall', 'sparring', 'punish'].includes(
+      value.phase as string,
+    ) ||
+    (value.mode === 'guided' &&
+      !['guided', 'recall'].includes(value.phase as string)) ||
     (value.mode === 'review' && value.phase !== 'recall') ||
     (value.mode === 'sparring' && value.phase !== 'sparring') ||
+    (value.mode === 'mistakes' &&
+      !['sparring', 'punish'].includes(value.phase as string)) ||
+    (value.phase === 'punish' && !Object.hasOwn(value, 'challenge')) ||
+    (Object.hasOwn(value, 'challenge') &&
+      (value.mode !== 'mistakes' ||
+        value.phase !== 'punish' ||
+        !object(value.challenge) ||
+        !fields(value.challenge, ['id', 'revision']) ||
+        !text(value.challenge.id) ||
+        !text(value.challenge.revision))) ||
     !(value.suggested === null || text(value.suggested))
   )
     return false
@@ -281,6 +299,16 @@ export function applyOutcome(
 ): Envelope {
   const next = copy(state)
   next.eventIds.push(event.id)
+  if (event.kind === 'exposure') {
+    const key = responseKey(
+      event.familyId,
+      event.side,
+      event.positionKey,
+      event.move,
+    )
+    next.snapshot.memories[key] = nextMemory(next.snapshot.memories[key], event)
+    return next
+  }
   next.snapshot.activity = [...next.snapshot.activity, copy(event)].slice(-500)
   const key = progressKey(event.lineId, event.side)
   const previous = next.snapshot.progress[key]
@@ -289,6 +317,12 @@ export function applyOutcome(
     side: event.side,
     status:
       previous?.status === 'mastered' ||
+      (event.mode === 'sparring' &&
+        event.kind === 'round' &&
+        event.completed &&
+        event.grade === 'recalled' &&
+        event.mistakes === 0 &&
+        event.cleanRepetitions >= 1) ||
       (event.mode === 'guided' &&
         event.grade !== 'skipped' &&
         event.completed &&

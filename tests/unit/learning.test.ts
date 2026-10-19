@@ -49,6 +49,27 @@ const session = (changes: Partial<SavedSession> = {}): SavedSession => ({
 
 describe('learner repository', () => {
   it('rejects saved teaching phases inconsistent with their exercise mode', () => {
+    expect(isSavedSession(session({ mode: 'mistakes', phase: 'punish' }))).toBe(
+      false,
+    )
+    expect(
+      isSavedSession(
+        session({
+          mode: 'mistakes',
+          phase: 'punish',
+          challenge: { id: 'fault', revision: 'analysis' },
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      isSavedSession(
+        session({
+          mode: 'guided',
+          phase: 'punish',
+          challenge: { id: 'fault', revision: 'analysis' },
+        }),
+      ),
+    ).toBe(false)
     expect(isSavedSession(session({ mode: 'guided', phase: 'sparring' }))).toBe(
       false,
     )
@@ -164,7 +185,7 @@ describe('learner repository', () => {
     expect((await repo.record(outcome({ id: 'closed' }))).status).toBe('failed')
     await expect(repo.load()).rejects.toThrow('closed')
   })
-  it('records round summaries without counting the final response twice or mastering sparring', async () => {
+  it('records round summaries without counting the final response twice and masters clean sparring', async () => {
     const repo = createMemoryRepository()
     await repo.record(outcome({ completed: false, cleanRepetitions: 0 }))
     expect(
@@ -184,7 +205,7 @@ describe('learner repository', () => {
       }),
     )
     expect((await repo.load()).progress['white:other-line']?.status).toBe(
-      'practicing',
+      'mastered',
     )
   })
   it('rejects sparse move arrays instead of treating missing entries as a valid game', async () => {

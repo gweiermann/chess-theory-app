@@ -52,6 +52,37 @@ describe('durable learner repository', () => {
     ).toBe(1)
     second.close()
   })
+  it('reopens branch observations and scheduling intent without adding accuracy events', async () => {
+    const indexedDB = new IDBFactory()
+    const first = createIndexedDbRepository({ indexedDB })
+    const exposure = event({
+      kind: 'exposure',
+      mode: 'mistakes',
+      completed: false,
+      cleanRepetitions: 0,
+      practiceIntent: 'explore',
+    })
+    await first.record(exposure)
+    await first.record(
+      event({
+        id: 'round',
+        kind: 'round',
+        mode: 'mistakes',
+        practiceIntent: 'explore',
+      }),
+    )
+    first.close()
+    const next = createIndexedDbRepository({ indexedDB })
+    expect((await next.record(exposure)).status).toBe('duplicate')
+    const snapshot = await next.load()
+    expect(snapshot.activity).toHaveLength(1)
+    expect(snapshot.activity[0]?.practiceIntent).toBe('explore')
+    expect(
+      snapshot.memories[responseKey('italian', 'white', 'initial', 'e4')],
+    ).toMatchObject({ attempts: 1, assisted: 0 })
+    expect(snapshot.progress['white:italian']?.status).toBe('practicing')
+    next.close()
+  })
   it('serializes concurrent writes from separate repositories without losing outcomes', async () => {
     const indexedDB = new IDBFactory()
     const first = createIndexedDbRepository({ indexedDB })

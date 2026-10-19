@@ -13,6 +13,7 @@ test('static hosting never disguises missing runtime assets as HTML', async ({
 })
 
 const stories = [
+  ['training-compactpanel--punish', '[data-testid="training-phase"]'],
   ['board-boardview--animated-moves', '[data-testid="square-a8"]'],
   ['openings-librarybrowser--browse', '[aria-label="Vollständige Varianten"]'],
   ['board-boardview--queued-sequence', '[data-testid="square-c4"]'],

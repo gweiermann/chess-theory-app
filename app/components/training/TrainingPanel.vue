@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { isFreePlay } from '../../modules/shared'
 import BoardView from '../board/BoardView.vue'
 import type { BoardSnapshot, MoveInput } from '../../modules/board'
 import type { TrainingSnapshot } from '../../modules/training'
@@ -25,6 +26,7 @@ const phaseName = computed(
       guided: 'Geführt aufbauen',
       recall: 'Aus dem Gedächtnis',
       sparring: 'Sparring',
+      punish: 'Fehler ausnutzen',
       complete: 'Runde abgeschlossen',
     })[props.state.phase],
 )
@@ -41,6 +43,8 @@ const feedback = computed(
   () =>
     ({
       ready: '',
+      punish: 'Theorie verlassen – nutze den Fehler.',
+      advantage: 'Vorteil gesichert.',
       correct: 'Gut erkannt.',
       retry: 'Du hast einen zweiten Versuch.',
       solution: 'Der blaue Pfeil zeigt den Zug.',
@@ -70,11 +74,12 @@ const historyText = computed(() =>
 <template>
   <section
     class="training-layout"
-    :aria-label="state.mode === 'sparring' ? familyName : state.line.name"
+    :class="{ punish: state.phase === 'punish' }"
+    :aria-label="isFreePlay(state.mode) ? familyName : state.line.name"
   >
     <header class="training-header">
-      <h1 :title="state.mode === 'sparring' ? familyName : state.line.name">
-        {{ state.mode === 'sparring' ? familyName : state.line.name }}
+      <h1 :title="isFreePlay(state.mode) ? familyName : state.line.name">
+        {{ isFreePlay(state.mode) ? familyName : state.line.name }}
       </h1>
       <span class="phase-label" data-testid="training-phase">{{
         phaseName
@@ -120,7 +125,7 @@ const historyText = computed(() =>
         {{ historyText || 'Grundstellung' }}
       </p>
       <div
-        v-if="state.mode !== 'sparring'"
+        v-if="!isFreePlay(state.mode)"
         class="repetition-progress"
         :aria-label="`${state.cleanRepetitions} von ${state.targetRepetitions} sauberen Wiederholungen`"
       >
@@ -218,11 +223,13 @@ const historyText = computed(() =>
         ><span>Neustart</span>
       </button>
       <button
-        v-if="state.mode === 'sparring'"
+        v-if="isFreePlay(state.mode)"
         type="button"
         class="game-action explore-action"
         aria-label="Anderen Weg zeigen"
-        :disabled="!playerInput || state.available.length < 2"
+        :disabled="
+          !playerInput || state.phase === 'punish' || state.available.length < 2
+        "
         @click="emit('suggest')"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -340,6 +347,13 @@ h1 {
 .player-avatar.black {
   background: var(--ink);
   color: var(--paper);
+}
+.punish .turn-banner {
+  background: #fff1d8;
+}
+.punish .phase-label {
+  color: #88652d;
+  font-weight: 750;
 }
 .turn-banner.active .player-avatar {
   box-shadow: 0 0 0 2px var(--green);

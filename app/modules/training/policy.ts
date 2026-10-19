@@ -16,7 +16,7 @@ export function evaluateMove(input: {
   if (!input.permitted.includes(input.san))
     return { accepted: false, reveal: input.attempt >= 1 }
   const grade: OutcomeGrade =
-    input.phase === 'guided' || input.newMaterial
+    input.phase === 'guided'
       ? 'new'
       : input.helped
         ? 'hinted'
@@ -24,6 +24,8 @@ export function evaluateMove(input: {
           ? 'suggested'
           : input.attempt > 0
             ? 'retried'
-            : 'recalled'
+            : input.newMaterial
+              ? 'new'
+              : 'recalled'
   return { accepted: true, grade }
 }

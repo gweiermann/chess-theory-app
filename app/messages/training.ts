@@ -1,5 +1,8 @@
 import type { Message } from '../modules/training'
 export const trainingMessages: Record<Message, string> = {
+  punish:
+    'Theorie verlassen. Finde eine geprüfte Fortsetzung, die den Fehler ausnutzt.',
+  advantage: 'Vorteil gesichert. Die geprüfte Fortsetzung ist abgeschlossen.',
   ready: 'Wähle eine Figur und anschließend ihr Zielfeld.',
   correct: 'Gut erkannt. Jetzt antwortet dein Gegner.',
   retry:

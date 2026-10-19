@@ -41,7 +41,9 @@ export interface Catalog {
   lineCount: number
 }
 
-export type Mode = 'guided' | 'sparring' | 'review'
+export type Mode = 'guided' | 'sparring' | 'review' | 'mistakes'
+export const isFreePlay = (mode: Mode) =>
+  mode === 'sparring' || mode === 'mistakes'
 export interface Settings {
   side: Side
   repetitions: number
@@ -65,8 +67,10 @@ export type OutcomeGrade =
   | 'suggested'
   | 'new'
   | 'skipped'
+export type PracticeIntent = 'explore' | 'review'
 export interface LearningOutcome {
-  kind?: 'response' | 'round'
+  practiceIntent?: PracticeIntent
+  kind?: 'response' | 'round' | 'exposure'
   requiredRepetitions?: number
   id: string
   at: number
@@ -97,9 +101,11 @@ export interface ReviewMemory {
   dueAt: number
 }
 export interface SavedSession {
+  practiceIntent?: PracticeIntent
   pendingReset?: boolean
   version: 1
-  phase: 'guided' | 'recall' | 'sparring'
+  phase: 'guided' | 'recall' | 'sparring' | 'punish'
+  challenge?: { id: string; revision: string }
   datasetRevision: string
   lineId: string
   familyId: string
