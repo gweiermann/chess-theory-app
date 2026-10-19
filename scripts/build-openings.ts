@@ -109,7 +109,9 @@ export async function buildOpenings(root = process.cwd()): Promise<Catalog> {
   const sourceFiles = ['a', 'b', 'c', 'd', 'e'].map((letter) => `${letter}.tsv`)
   const contents = await Promise.all(
     sourceFiles.map((file) =>
-      readFile(resolve(root, 'data/source', file), 'utf8'),
+      readFile(resolve(root, 'data/source', file), 'utf8').then((text) =>
+        text.replace(/\r\n/g, '\n'),
+      ),
     ),
   )
   const records = contents.flatMap((text, index) =>
