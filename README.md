@@ -36,6 +36,7 @@ Service workers are disabled in `pnpm dev`. Installation and offline support req
 | `board`     | Accepted chess position, move attempts, history, checkpoints, input, arrows, and premoves |
 | `openings`  | Validated opening data, lazy family loading, and sequence-based repertoires               |
 | `learning`  | Versioned learner storage, progress, activity, settings, and saved sessions               |
+| `mistakes`  | Validated Stockfish mistake branches, analysis revisions, and exact-history lookup        |
 | `selection` | Lesson choice, opponent replies, exploration suggestions, and review priorities           |
 | `training`  | Guided/review/sparring policies, round coordination, cancellation, and outcome recording  |
 
@@ -45,7 +46,29 @@ The mobile training screen fits its viewport with a square board and compact con
 
 Guided learning uses unique maximal SAN paths: shorter named prefixes and duplicate move sequences are not separate lessons. The first recommendation is the shortest complete path. Subsequent recommendations first prefer the deepest shared prefix with the previous lesson, then the shortest remaining sibling at that proximity. The home screen and library share this ordering. Reopening learning uses the most recently mastered line for that side; an unfinished old lesson does not establish the branch preference. Mastery is side-specific. The library opens directly to Italian variations and filters open, learned, or all complete lines.
 
-Free play accepts every continuation in the Italian tree, including unfamiliar material. Opponent replies prefer the greatest remaining depth; equal-length options retain familiarity and response-memory weighting. Help follows the longest available continuation. New responses are graded as new material and do not count as forgotten moves or earn guided mastery. Solution hints and exploration arrows have separate learning grades.
+Free play accepts every continuation in the Italian tree, including unfamiliar material. Selection prefers unseen responses and opponent branches; remaining depth breaks ties, so play can still continue to complete leaves. The selected target guides opponent replies until the learner chooses a different branch. After three completed exploration rounds, one familiar round is offered for review, with priority for due or difficult responses. Returning after a day also offers one review. History is side-specific and shared by both free modes. Previously seen responses stop showing as new even when guided learning is incomplete. A complete unassisted, error-free sparring round earns mastery; helped or retried responses still count as seen. Observed opponent moves inform variety without entering accuracy statistics. Solution hints and exploration arrows have separate learning grades.
+
+## Experimental mistake training
+
+The third home card, **Fehler ausnutzen**, shares free play's complete Italian repertoire. The opponent can deviate at eligible positions during a line or after a terminal theory position. An amber phase indicator marks the transition out of theory. The learner plays a precomputed continuation for one to three of their own moves against Stockfish's prepared best replies, with the usual second attempt and solution arrow. Only the generated continuations are accepted; another legal move can still be playable. Theory premoves are cleared at the transition, without counting as mistakes. Completing an early mistake exercise does not award mastery for the unfinished theory line. Unseen slips take precedence during exploration; repeated slips are deferred until later theory positions where possible. Review remains available through the smaller home action and library.
+
+The checked-in Stockfish 19 artifact contains 673 mistake branches and 829 continuations from 362 of 421 inspected positions. Its continuations comprise 233 one-move, 127 two-move and 469 three-move learner responses.
+
+The `mistakes` module validates the artifact against the current opening revision and exposes exact-history lookup and branch lookup. Training owns the active branch and phase. Saved challenges include both the branch ID and analysis revision; incompatible or illegal resumes restart safely. Opening mode and analysis revisions remain separate, so rebuilding engine analysis does not invalidate ordinary lessons. The PWA precaches the checked-in analysis JSON along with the course; no engine runs on the phone.
+
+`pnpm data:mistakes` is an explicit offline generation command requiring `STOCKFISH_PATH`. Normal data/build commands consume the artifact without downloading or running an engine. The generator uses the pinned official [Stockfish 19 release](https://github.com/official-stockfish/Stockfish/releases/tag/sf_19), records the executable SHA-256, and runs independent single-thread searches with 32 MiB hash, cleared search state, fixed node budgets and stable ordering. Four engine processes analyze independent positions; results are sorted before hashing. The executable is local tooling, excluded from Git and production assets. Reproducibility requires the same engine binary/CPU implementation; searches do not use wall-clock time. A local analysis cache makes reruns inexpensive.
+
+Generation enumerates every unique SAN prefix from the Italian setup through every maximal leaf. A 60,000-node MultiPV search screens legal deviations; 250,000-node searches verify the baseline, responses and resulting positions. A retained slip must lose at least 150 engine centipawns against the opponent's best play and give the learner at least +100 centipawns. Known theory continuations are excluded. Up to two slips per position and two near-best root responses within 35 centipawns are retained. Responses require a completed search depth of at least 10. Complete UCI batches are kept together so interrupted MultiPV output cannot mix ranks from different reports.
+
+Continuations follow the engine principal variation and stop after material has been converted and the opponent has replied, checkmate, or three learner moves. Their final position is searched again and must retain at least +100 centipawns and stay within 80 centipawns of the initial advantage. Scores are engine estimates at finite search budgets, not proof of a forced win. Candidate screening is deliberately bounded: not every possible mistake or equally good response is represented. The mode samples an available slip with 30% probability on an opponent turn and forces an available terminal slip; a path without a verified opportunity finishes normally.
+
+To regenerate on PowerShell after downloading the official engine locally:
+
+```powershell
+$env:STOCKFISH_PATH = 'C:\path\to\stockfish.exe'
+pnpm data
+pnpm data:mistakes
+```
 
 ## Data and browser state
 
@@ -71,4 +94,4 @@ Unit tests cover module rules and data validation. Integration tests cover board
 
 `pnpm storybook` opens component development on port 6006. `pnpm build-storybook` creates a standalone component catalog. Stories include an interactive move/reset animation demo with castling, en passant and promotion, board input, arrows, promotion, direct Italian lesson recommendations, library loading failures, learned variations, settings validation, and save/resume interactions.
 
-CI runs all checks on Node.js 24. GitHub Pages deployment builds the exact successful main-branch CI revision with the configured repository base URL. Manual deployment runs the same verification before publishing. Stockfish mistake-punishment exercises and full-game play are not implemented.
+CI runs all checks on Node.js 24. GitHub Pages deployment builds the exact successful main-branch CI revision with the configured repository base URL. Manual deployment runs the same verification before publishing. Full-game play is not implemented.

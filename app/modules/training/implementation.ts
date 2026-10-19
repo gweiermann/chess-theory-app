@@ -1,8 +1,21 @@
 import { createRepertoire, terminalLines } from '../openings'
-import { chooseReply, recommendMove, orderLearningLines } from '../selection'
-import { isSavedSession } from '../learning'
-import { progressKey } from '../shared'
-import type { LearningOutcome, MoveInput, SavedSession } from '../shared'
+import {
+  chooseReply,
+  recommendMove,
+  orderLearningLines,
+  chooseLesson,
+  choosePracticeIntent,
+  chooseMistake,
+} from '../selection'
+import { isSavedSession, nextMemory } from '../learning'
+import { progressKey, responseKey, isFreePlay } from '../shared'
+import type { MistakeBranch } from '../mistakes'
+import type {
+  LearningOutcome,
+  MoveInput,
+  SavedSession,
+  PracticeIntent,
+} from '../shared'
 import type { BoardCheckpoint } from '../board/public'
 import type {
   TrainingController,
@@ -24,7 +37,9 @@ export function createTraining(options: TrainingOptions): TrainingController {
   const now = options.now ?? Date.now
   const random = options.random ?? Math.random
   const progress = options.learning?.progress ?? {}
-  const memories = options.learning?.memories ?? {}
+  const memories = { ...options.learning?.memories }
+  const activity = [...(options.learning?.activity ?? [])]
+  let practiceIntent: PracticeIntent = 'explore'
   const fullLines = terminalLines(family.lines).sort(
     (a, b) => b.moves.length - a.moves.length || a.id.localeCompare(b.id),
   )
@@ -42,6 +57,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
   let suggested: string | null = null
   let repetitionMistakes = 0
   let repetitionAssisted = false
+  let activeMistake: MistakeBranch | null = null
   let roundFinished = false
   let pendingReset = false
   let state: TrainingSnapshot = {
@@ -75,8 +91,17 @@ export function createTraining(options: TrainingOptions): TrainingController {
       (line) =>
         progress[progressKey(line.id, state.side)]?.status === 'mastered',
     )
+  const challengeLines = (branch: MistakeBranch) =>
+    branch.paths.map((path) => ({
+      ...state.line,
+      moves: [...branch.history, branch.mistake, ...path.moves],
+    }))
   const repertoireLines = () =>
-    state.mode === 'sparring' ? fullLines : [state.line]
+    activeMistake
+      ? challengeLines(activeMistake)
+      : isFreePlay(state.mode)
+        ? fullLines
+        : [state.line]
   const repertoire = () => createRepertoire(repertoireLines())
   const saveError = (message: string) => {
     state.persistenceError = message
@@ -88,6 +113,15 @@ export function createTraining(options: TrainingOptions): TrainingController {
       : {
           version: 1,
           pendingReset,
+          ...(isFreePlay(state.mode) ? { practiceIntent } : {}),
+          ...(activeMistake
+            ? {
+                challenge: {
+                  id: activeMistake.id,
+                  revision: options.mistakeBook!.revision,
+                },
+              }
+            : {}),
           phase: state.phase as Exclude<Phase, 'complete'>,
           datasetRevision: options.datasetRevision,
           lineId: state.line.id,
@@ -142,6 +176,16 @@ export function createTraining(options: TrainingOptions): TrainingController {
       .catch((error) => saveError(String(error)))
   }
   const record = (outcome: LearningOutcome) => {
+    if (outcome.kind !== 'round' && outcome.grade !== 'skipped') {
+      const key = responseKey(
+        outcome.familyId,
+        outcome.side,
+        outcome.positionKey,
+        outcome.move,
+      )
+      memories[key] = nextMemory(memories[key], outcome)
+    }
+    if (outcome.kind !== 'exposure') activity.push(outcome)
     pendingOutcomes.set(outcome.id, outcome)
     persistence = persistence
       .then(async () => {
@@ -156,9 +200,10 @@ export function createTraining(options: TrainingOptions): TrainingController {
     positionKey: string,
     grade: LearningOutcome['grade'],
     completed = false,
-    kind: 'response' | 'round' = 'response',
+    kind: 'response' | 'round' | 'exposure' = 'response',
   ): LearningOutcome => ({
     kind,
+    ...(isFreePlay(state.mode) ? { practiceIntent } : {}),
     requiredRepetitions: state.targetRepetitions,
     id: identifier(),
     at: now(),
@@ -170,7 +215,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
     move,
     grade,
     mistakes:
-      kind === 'round' ? repetitionMistakes : grade === 'new' ? 0 : attempt,
+      kind === 'round' ? repetitionMistakes : kind === 'exposure' ? 0 : attempt,
     completed,
     cleanRepetitions: state.cleanRepetitions,
     datasetRevision: options.datasetRevision,
@@ -182,22 +227,45 @@ export function createTraining(options: TrainingOptions): TrainingController {
     const move = board.snapshot().legalMoves.find((move) => move.san === san)
     board.showArrows(move ? [{ from: move.from, to: move.to, purpose }] : [])
   }
+  const familiarResponse = (san: string) => {
+    const position = board.snapshot()
+    return (
+      !!memories[
+        responseKey(family.summary.id, state.side, position.positionKey, san)
+      ]?.attempts ||
+      learned().some(
+        (line) =>
+          position.moves.every((move, index) => line.moves[index] === move) &&
+          line.moves[position.moves.length] === san,
+      )
+    )
+  }
   const updateChoices = () => {
     const position = board.snapshot()
     const choices = repertoire().continuations(position.moves)
-    if (state.mode === 'sparring') {
-      const longest = repertoire().matching(position.moves)[0]
-      if (longest) state.line = longest
+    if (isFreePlay(state.mode) && !activeMistake) {
+      const matching = repertoire().matching(position.moves)
+      if (!matching.some((line) => line.id === state.line.id)) {
+        const choice = chooseLesson({
+          lines: matching,
+          progress,
+          memories,
+          activity,
+          practiceIntent,
+          side: state.side,
+          mode: state.mode,
+          now: now(),
+          random,
+        })
+        if (choice) state.line = choice.line
+      }
     }
     state.available = choices
     state.expectedSan = choices[0] ?? null
     state.newMaterial =
       state.phase === 'sparring' &&
-      !learned().some(
-        (line) =>
-          line.moves.length > position.moves.length &&
-          position.moves.every((move, index) => line.moves[index] === move),
-      )
+      choices.length > 0 &&
+      choices.every((san) => !familiarResponse(san))
   }
   const schedule = (callback: () => void, delay: number) => {
     const epoch = generation
@@ -221,7 +289,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
     if (!wasGuided && !repetitionMistakes && !repetitionAssisted)
       state.cleanRepetitions++
     const complete =
-      state.mode === 'sparring' ||
+      isFreePlay(state.mode) ||
       (!wasGuided && state.cleanRepetitions >= state.targetRepetitions)
     record(
       outcome(
@@ -242,7 +310,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
     if (complete) {
       state.phase = 'complete'
       state.status = 'complete'
-      state.message = 'complete'
+      state.message = activeMistake ? 'advantage' : 'complete'
       state.available = []
       state.expectedSan = null
       persistSession()
@@ -281,11 +349,20 @@ export function createTraining(options: TrainingOptions): TrainingController {
       return
     }
     updateChoices()
-    if (!state.available.length) {
-      finishRound()
-      return
-    }
     const position = board.snapshot()
+    if (!state.available.length) {
+      const endings =
+        state.mode === 'mistakes' && !activeMistake
+          ? (options.mistakeBook?.at(position.moves, state.side) ?? [])
+          : []
+      if (endings.length) {
+        state.available = endings.map((branch) => branch.mistake)
+        state.expectedSan = endings[0]!.mistake
+      } else {
+        finishRound()
+        return
+      }
+    }
     if (position.turn !== state.side) {
       state.status = 'opponent'
       board.configureInput({
@@ -294,8 +371,32 @@ export function createTraining(options: TrainingOptions): TrainingController {
       })
       notify()
       schedule(() => {
+        const candidates =
+          state.mode === 'mistakes' && !activeMistake
+            ? (options.mistakeBook?.at(position.moves, state.side) ?? [])
+            : []
+        const slip =
+          candidates.length &&
+          (!repertoire().continuations(position.moves).length || random() < 0.3)
+            ? chooseMistake({
+                lines: family.lines,
+                progress,
+                memories,
+                activity,
+                practiceIntent,
+                side: state.side,
+                mode: state.mode,
+                now: now(),
+                random,
+                branches: candidates,
+                unseenOnly:
+                  practiceIntent === 'explore' &&
+                  repertoire().continuations(position.moves).length > 0,
+              })
+            : undefined
         const reply =
-          state.mode === 'sparring'
+          slip?.mistake ??
+          (isFreePlay(state.mode) && !activeMistake
             ? chooseReply({
                 lines: family.lines,
                 history: board.snapshot().moves,
@@ -306,8 +407,11 @@ export function createTraining(options: TrainingOptions): TrainingController {
                 now: now(),
                 random,
                 allowNew: settings.allowNew,
+                targetLineId: state.line.id,
+                activity,
+                practiceIntent,
               })?.san
-            : state.expectedSan
+            : state.expectedSan)
         if (
           !reply ||
           board.makeMove(reply, position.revision).status !== 'accepted'
@@ -316,6 +420,15 @@ export function createTraining(options: TrainingOptions): TrainingController {
           board.configureInput({ input: 'disabled' })
           notify()
           return
+        }
+        if (isFreePlay(state.mode))
+          record(outcome(reply, position.positionKey, 'new', false, 'exposure'))
+        if (slip) {
+          activeMistake = slip
+          state.phase = 'punish'
+          state.message = 'punish'
+          // A theory premove was chosen before the mistake became visible.
+          board.configureInput({ premoves: false })
         }
         persistSession()
         const hadPremove = board.snapshot().premove !== null
@@ -337,6 +450,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
       else if (settings.suggestions === 'automatic')
         controller.requestSuggestion()
       if (state.newMaterial) state.message = 'new'
+      else if (state.message === 'new') state.message = 'ready'
       persistSession()
       notify()
     }
@@ -363,23 +477,15 @@ export function createTraining(options: TrainingOptions): TrainingController {
       attempt,
       helped,
       suggested,
-      newMaterial:
-        state.mode === 'sparring'
-          ? !learned().some(
-              (line) =>
-                board
-                  .snapshot()
-                  .moves.every((san, index) => line.moves[index] === san) &&
-                line.moves[board.snapshot().moves.length] ===
-                  result.attempt.san,
-            )
-          : state.newMaterial,
+      newMaterial: isFreePlay(state.mode)
+        ? !familiarResponse(result.attempt.san)
+        : state.newMaterial,
     })
     if (!decision.accepted) {
       board.rejectMove(result.attempt.id)
       attempt++
+      repetitionMistakes++
       if (!state.newMaterial) {
-        repetitionMistakes++
         state.mistakes++
       }
       state.message = attempt === 1 ? 'retry' : 'outside'
@@ -393,14 +499,11 @@ export function createTraining(options: TrainingOptions): TrainingController {
       'accepted'
     )
       return
-    const matched = repertoire().matching(board.snapshot().moves)
     if (
-      state.mode === 'sparring' &&
-      !matched.some((line) => line.id === state.line.id) &&
-      matched[0]
+      decision.grade === 'recalled' ||
+      (isFreePlay(state.mode) && decision.grade === 'new')
     )
-      state.line = matched[0]
-    if (decision.grade === 'recalled') state.recalled++
+      state.recalled++
     else {
       state.assisted++
       repetitionAssisted = true
@@ -419,6 +522,17 @@ export function createTraining(options: TrainingOptions): TrainingController {
     start(lineId, mode, side, saved) {
       if (disposed) return
       cancel()
+      activeMistake = null
+      practiceIntent = choosePracticeIntent({
+        lines: family.lines,
+        progress,
+        memories,
+        activity,
+        side,
+        mode,
+        now: now(),
+        random,
+      })
       writer = (sessionWriters.get(repository) ?? 0) + 1
       sessionWriters.set(repository, writer)
       const requested = family.lines.find((line) => line.id === lineId)
@@ -434,7 +548,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
               side,
             })[0] ?? requested)
           : requested
-      if (!line) {
+      if (!line || (mode === 'mistakes' && !options.mistakeBook)) {
         state.status = 'error'
         notify()
         return
@@ -468,7 +582,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
       roundFinished = false
       pendingReset = false
       setupPlies = 0
-      if (settings.autoSetup && mode !== 'sparring') {
+      if (settings.autoSetup && !isFreePlay(mode)) {
         const parents = family.lines.filter(
           (parent) =>
             progress[progressKey(parent.id, side)]?.status === 'mastered' &&
@@ -487,7 +601,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
           ...parents.map((parent) => parent.moves.length),
         )
       }
-      if (mode === 'sparring' && settings.autoSetup) {
+      if (isFreePlay(mode) && settings.autoSetup) {
         const candidates = repertoireLines()
         while (
           setupPlies < 6 &&
@@ -519,20 +633,35 @@ export function createTraining(options: TrainingOptions): TrainingController {
       })
       checkpoint = board.saveCheckpoint()
       if (saved) {
+        const restored =
+          saved.challenge?.revision === options.mistakeBook?.revision
+            ? options.mistakeBook?.get(saved.challenge!.id)
+            : undefined
+        const validChallenge =
+          saved.phase !== 'punish' ||
+          (restored &&
+            saved.moves.length >= restored.history.length + 1 &&
+            (restored.history.length % 2 === 0) !== (side === 'white'))
+        const savedLines =
+          restored && saved.phase === 'punish'
+            ? challengeLines(restored)
+            : isFreePlay(mode)
+              ? fullLines
+              : [line]
         const valid =
+          validChallenge &&
           isSavedSession(saved) &&
           saved.datasetRevision === options.datasetRevision &&
           saved.familyId === family.summary.id &&
           saved.side === side &&
           saved.mode === mode &&
           saved.lineId === line.id &&
-          createRepertoire(
-            mode === 'sparring' ? repertoireLines() : [line],
-          ).matching(saved.moves).length > 0 &&
+          createRepertoire(savedLines).matching(saved.moves).length > 0 &&
           saved.moves
             .slice(0, saved.setupPlies)
             .every((move, index) => line.moves[index] === move)
         if (valid && board.load({ moves: saved.moves }).status === 'accepted') {
+          activeMistake = saved.phase === 'punish' ? (restored ?? null) : null
           setupPlies = saved.setupPlies
           const liveGame = board.snapshot().moves
           // Rebuild checkpoint in the current game's identity, then restore live accepted history.
@@ -541,6 +670,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
             ...board.saveCheckpoint(),
             game: { moves: liveGame.slice(0, setupPlies) },
           }
+          practiceIntent = saved.practiceIntent ?? practiceIntent
           state.phase = saved.phase
           state.targetRepetitions = saved.repetitions
           state.cleanRepetitions = saved.cleanRepetitions
@@ -581,6 +711,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
         disposed ||
         state.status !== 'player' ||
         state.phase === 'guided' ||
+        state.phase === 'punish' ||
         board.snapshot().viewedPly !== null
       )
         return
@@ -589,6 +720,7 @@ export function createTraining(options: TrainingOptions): TrainingController {
         side: state.side,
         positionKey: board.snapshot().positionKey,
         moves: state.available,
+        practiceIntent,
         memories,
         now: now(),
       })

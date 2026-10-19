@@ -36,6 +36,7 @@ const start = async (mode: Mode) => {
       lines: family.lines,
       progress: learning.progress,
       memories: learning.memories,
+      activity: learning.activity,
       side: learning.settings.side,
       mode,
       now: Date.now(),
@@ -137,25 +138,34 @@ const resume = async () => {
             }}
           </button>
         </article>
-        <article class="mode-card">
+        <article class="mode-card experimental">
           <span class="mode-icon" aria-hidden="true"
             ><svg viewBox="0 0 24 24">
-              <path d="M4 10a8 8 0 1 1 1 8M4 4v6h6" /></svg
+              <path d="m13 2-9 12h7l-1 8 10-12h-7z" /></svg
           ></span>
-          <h2>Gezielt wiederholen</h2>
+          <h2>
+            Fehler ausnutzen <span class="experiment-badge">Experiment</span>
+          </h2>
           <button
-            class="button"
+            class="button primary"
             :disabled="!!starting"
-            @click="start('review')"
+            @click="start('mistakes')"
           >
             {{
-              starting === 'review'
+              starting === 'mistakes'
                 ? 'Runde wird vorbereitet …'
-                : 'Wiederholung starten →'
+                : 'Mit Fehlern spielen →'
             }}
           </button>
         </article>
       </section>
+      <button
+        class="review-link"
+        :disabled="!!starting"
+        @click="start('review')"
+      >
+        Wiederholung starten →
+      </button>
     </template>
   </AppFrame>
 </template>
@@ -211,6 +221,26 @@ h1 {
   font-size: 21px;
   margin: 0;
   letter-spacing: -0.025em;
+}
+.experiment-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #88652d;
+  background: #fff1d8;
+  border-radius: 5px;
+  padding: 3px 5px;
+  vertical-align: middle;
+}
+.review-link {
+  flex-shrink: 0;
+  align-self: center;
+  min-height: 36px;
+  margin-top: 4px;
+  border: 0;
+  color: var(--green);
+  background: transparent;
+  font-size: 13px;
 }
 .resume-card {
   width: 100%;

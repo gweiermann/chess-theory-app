@@ -12,6 +12,7 @@
     "preview": "nuxt preview --host 0.0.0.0 --port 3040",
     "postinstall": "nuxt prepare",
     "data": "tsx scripts/build-openings.ts",
+    "data:mistakes": "tsx scripts/build-mistakes.ts",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",

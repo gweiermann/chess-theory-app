@@ -11,7 +11,8 @@ import type {
 } from '../shared'
 import type { BoardSession } from '../board/public'
 import type { LearnerRepository } from '../learning/public'
-export type Phase = 'guided' | 'recall' | 'sparring' | 'complete'
+import type { MistakeBook } from '../mistakes'
+export type Phase = 'guided' | 'recall' | 'sparring' | 'punish' | 'complete'
 export type Message =
   | 'ready'
   | 'correct'
@@ -26,6 +27,8 @@ export type Message =
   | 'repeat'
   | 'complete'
   | 'stale-session'
+  | 'punish'
+  | 'advantage'
 export interface TrainingSnapshot {
   status: 'player' | 'opponent' | 'complete' | 'error'
   phase: Phase
@@ -51,6 +54,7 @@ export interface TrainingOptions {
   datasetRevision: string
   settings: Settings
   learning?: LearningSnapshot
+  mistakeBook?: MistakeBook
   random?: () => number
   now?: () => number
   opponentDelayMs?: number

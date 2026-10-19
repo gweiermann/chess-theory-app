@@ -96,3 +96,35 @@ export const Completion: Story = {
 export const SaveFailure: Story = {
   args: { state: { ...state, persistenceError: 'Speicher nicht verfügbar' } },
 }
+
+const mistakeBoard = createBoard()
+mistakeBoard.load({ moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'b5'] })
+mistakeBoard.configureInput({ playerSide: 'white', input: 'player' })
+export const Punish: Story = {
+  args: {
+    board: mistakeBoard.snapshot(),
+    state: {
+      ...state,
+      mode: 'mistakes',
+      phase: 'punish',
+      message: 'punish',
+      available: ['Bxb5'],
+      expectedSan: 'Bxb5',
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByTestId('training-phase')).toHaveTextContent(
+      'Fehler ausnutzen',
+    )
+    await expect(
+      canvas.getByText('Theorie verlassen – nutze den Fehler.'),
+    ).toBeVisible()
+    await userEvent.click(canvas.getByTestId('square-c4'))
+    await userEvent.click(canvas.getByTestId('square-b5'))
+    await expect(args.onMove).toHaveBeenCalledWith({ from: 'c4', to: 'b5' })
+    await expect(
+      canvas.getByRole('button', { name: 'Anderen Weg zeigen' }),
+    ).toBeDisabled()
+  },
+}

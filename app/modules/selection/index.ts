@@ -5,3 +5,5 @@ export {
   recommendMove,
   orderLearningLines,
 } from './implementation'
+
+export { choosePracticeIntent, chooseMistake } from './practice'

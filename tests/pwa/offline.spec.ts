@@ -85,6 +85,10 @@ test('opens unvisited lessons and restores a playable deep link offline', async 
   await expect(page.getByTestId('square-e5')).toHaveAttribute('data-piece', 'p')
   await page.goto(`${baseURL}profile`)
   await expect(page.getByLabel('Bevorzugte Seite')).toBeVisible()
+  await page.goto(baseURL!)
+  await page.getByRole('button', { name: 'Mit Fehlern spielen →' }).click()
+  await expect(page.getByTestId('square-c4')).toHaveAttribute('data-piece', 'b')
+  await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
 test('waits for an explicit update action before reloading the app', async ({

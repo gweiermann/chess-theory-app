@@ -1,6 +1,7 @@
+import { choosePracticeIntent, choosePracticeLine } from './practice'
 import { Chess } from 'chess.js'
 import { terminalLines } from '../openings'
-import { progressKey, responseKey } from '../shared'
+import { progressKey, responseKey, isFreePlay } from '../shared'
 import type { OpeningLine, ReviewMemory } from '../shared'
 import type {
   SelectionInput,
@@ -20,10 +21,6 @@ const isLearned = (input: SelectionInput, line: OpeningLine) =>
         'mastered' &&
       line.moves.every((move, index) => known.moves[index] === move),
   )
-const pick = <T>(items: readonly T[], random: () => number): T | undefined =>
-  items[
-    Math.min(items.length - 1, Math.max(0, Math.floor(random() * items.length)))
-  ]
 const memoryPriority = (memory: ReviewMemory | undefined, now: number) =>
   memory
     ? (memory.mistakes * 8 + memory.assisted * 2) /
@@ -87,6 +84,26 @@ export function orderLearningLines(input: LearningOrderInput): OpeningLine[] {
 }
 
 export function chooseLesson(input: SelectionInput): LessonChoice | null {
+  if (isFreePlay(input.mode)) {
+    const leaves = terminalLines(input.lines)
+    let shared = 0
+    while (
+      leaves.length &&
+      leaves.every(
+        (line) =>
+          line.moves[shared] && line.moves[shared] === leaves[0]!.moves[shared],
+      )
+    )
+      shared++
+    const line = choosePracticeLine(input, leaves, shared)
+    return line
+      ? {
+          line,
+          reason:
+            choosePracticeIntent(input) === 'review' ? 'review' : 'variety',
+        }
+      : null
+  }
   let eligible = (
     input.mode === 'guided'
       ? orderLearningLines(input)
@@ -111,15 +128,7 @@ export function chooseLesson(input: SelectionInput): LessonChoice | null {
               a.name.localeCompare(b.name) ||
               a.id.localeCompare(b.id),
         )
-  const line =
-    input.mode === 'sparring'
-      ? pick(
-          ordered.filter(
-            (line) => line.moves.length === ordered[0]?.moves.length,
-          ),
-          input.random,
-        )
-      : ordered[0]
+  const line = ordered[0]
   return line
     ? {
         line,
@@ -139,39 +148,17 @@ export function chooseReply(input: ReplyInput): ReplyChoice | null {
       input.history.every((san, index) => line.moves[index] === san) &&
       line.moves.length > input.history.length,
   )
-  const learned = matching.filter((line) => isLearned(input, line))
-  const maximumDepth = Math.max(0, ...matching.map((line) => line.moves.length))
-  const deepest = matching.filter((line) => line.moves.length === maximumDepth)
-  const familiar = deepest.filter((line) => isLearned(input, line))
-  const pool = !input.allowNew && familiar.length ? familiar : deepest
-  const moves = [
-    ...new Set(pool.map((line) => line.moves[input.history.length]!)),
-  ]
-  const weighted = moves.map((san) => ({
-    san,
-    weight:
-      1 +
-      Math.max(
-        ...pool
-          .filter((line) => line.moves[input.history.length] === san)
-          .map((line) => linePriority(input, line, input.history.length + 1)),
-      ),
-  }))
-  const total = weighted.reduce((sum, choice) => sum + choice.weight, 0)
-  let remaining = Math.max(0, Math.min(1, input.random())) * total
-  let san = weighted.at(-1)?.san
-  for (const choice of weighted) {
-    remaining -= choice.weight
-    if (remaining < 0) {
-      san = choice.san
-      break
-    }
-  }
+  const target = matching.find((line) => line.id === input.targetLineId)
+  const line =
+    target ?? choosePracticeLine(input, matching, input.history.length)
+  const san = line?.moves[input.history.length]
   return san
     ? {
         san,
-        newMaterial: !learned.some(
-          (line) => line.moves[input.history.length] === san,
+        newMaterial: !matching.some(
+          (candidate) =>
+            isLearned(input, candidate) &&
+            candidate.moves[input.history.length] === san,
         ),
       }
     : null
@@ -188,6 +175,9 @@ export function recommendMove(input: SuggestionInput): Suggestion | null {
   }))
   choices.sort(
     (a, b) =>
+      (input.practiceIntent === 'explore'
+        ? Number(!b.memory?.attempts) - Number(!a.memory?.attempts)
+        : 0) ||
       memoryPriority(b.memory, input.now) - memoryPriority(a.memory, input.now),
   )
   const best = choices[0]!

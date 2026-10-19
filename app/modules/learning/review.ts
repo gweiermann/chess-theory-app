@@ -12,7 +12,10 @@ export function nextMemory(
   previous: ReviewMemory | undefined,
   event: LearningOutcome,
 ): ReviewMemory {
-  const assisted = ['hinted', 'suggested', 'new'].includes(event.grade)
+  const assisted =
+    event.kind !== 'exposure' &&
+    (['hinted', 'suggested'].includes(event.grade) ||
+      (event.grade === 'new' && event.mode === 'guided'))
   const attempts = (previous?.attempts ?? 0) + 1
   const days =
     event.grade === 'recalled' && !event.mistakes

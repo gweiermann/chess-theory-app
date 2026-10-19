@@ -110,7 +110,7 @@ describe('training coordinator', () => {
     expect(result.progress['white:long']?.status).not.toBe('mastered')
     expect(
       result.activity.filter((event) => event.move === 'c3')[0]?.grade,
-    ).toBe('new')
+    ).toBe('hinted')
     expect(controller.snapshot().mistakes).toBe(0)
     controller.dispose()
   })
