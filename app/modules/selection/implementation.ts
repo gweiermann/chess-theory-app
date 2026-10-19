@@ -9,6 +9,7 @@ import type {
   ReplyChoice,
   SuggestionInput,
   Suggestion,
+  LearningOrderInput,
 } from './public'
 
 const isLearned = (input: SelectionInput, line: OpeningLine) =>
@@ -56,9 +57,14 @@ function linePriority(
   }
   return priority
 }
-export function chooseLesson(input: SelectionInput): LessonChoice | null {
+/** Complete paths only: nearest shared branch first, then shortest length.
+ * With no previous practice, proximity is equal and the shortest leaf starts.
+ */
+export function orderLearningLines(input: LearningOrderInput): OpeningLine[] {
   const recent = Object.values(input.progress)
-    .filter((record) => record.side === input.side)
+    .filter(
+      (record) => record.side === input.side && record.status === 'mastered',
+    )
     .sort((a, b) => b.lastPracticedAt - a.lastPracticedAt)
     .map((record) => input.lines.find((line) => line.id === record.lineId))
     .find((line) => line !== undefined)
@@ -71,7 +77,21 @@ export function chooseLesson(input: SelectionInput): LessonChoice | null {
     )
     return difference < 0 ? line.moves.length : difference
   }
-  let eligible = terminalLines(input.lines).filter((line) =>
+  return terminalLines(input.lines).sort(
+    (a, b) =>
+      sharedDepth(b) - sharedDepth(a) ||
+      a.moves.length - b.moves.length ||
+      a.name.localeCompare(b.name) ||
+      a.id.localeCompare(b.id),
+  )
+}
+
+export function chooseLesson(input: SelectionInput): LessonChoice | null {
+  let eligible = (
+    input.mode === 'guided'
+      ? orderLearningLines(input)
+      : terminalLines(input.lines)
+  ).filter((line) =>
     line.moves.some(
       (_, index) => (index % 2 === 0) === (input.side === 'white'),
     ),
@@ -80,15 +100,17 @@ export function chooseLesson(input: SelectionInput): LessonChoice | null {
     eligible = eligible.filter((line) => !isLearned(input, line))
   if (input.lastLineId && eligible.length > 1)
     eligible = eligible.filter((line) => line.id !== input.lastLineId)
-  const ordered = [...eligible].sort((a, b) =>
-    input.mode === 'review'
-      ? linePriority(input, b) - linePriority(input, a) ||
-        a.moves.length - b.moves.length
-      : (input.mode === 'guided' ? sharedDepth(b) - sharedDepth(a) : 0) ||
-        b.moves.length - a.moves.length ||
-        a.name.localeCompare(b.name) ||
-        a.id.localeCompare(b.id),
-  )
+  const ordered =
+    input.mode === 'guided'
+      ? eligible
+      : [...eligible].sort((a, b) =>
+          input.mode === 'review'
+            ? linePriority(input, b) - linePriority(input, a) ||
+              a.moves.length - b.moves.length
+            : b.moves.length - a.moves.length ||
+              a.name.localeCompare(b.name) ||
+              a.id.localeCompare(b.id),
+        )
   const line =
     input.mode === 'sparring'
       ? pick(

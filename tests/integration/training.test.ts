@@ -22,7 +22,7 @@ const family: Family = {
 }
 afterEach(() => vi.useRealTimers())
 describe('training coordinator', () => {
-  it('expands a named prefix to a complete lesson when starting guided learning', () => {
+  it('expands a named prefix to its shortest complete lesson when starting guided learning', () => {
     const longer = {
       ...family.lines[0]!,
       id: 'long',
@@ -31,12 +31,23 @@ describe('training coordinator', () => {
     const controller = createTraining({
       board: createBoard(),
       repository: createMemoryRepository(),
-      family: { ...family, lines: [...family.lines, longer] },
+      family: {
+        ...family,
+        lines: [
+          ...family.lines,
+          longer,
+          {
+            ...family.lines[0]!,
+            id: 'short',
+            moves: [...family.lines[0]!.moves, 'Nf6'],
+          },
+        ],
+      },
       settings: { ...DEFAULT_SETTINGS },
       datasetRevision: 'test',
     })
     controller.start('base', 'guided', 'white')
-    expect(controller.snapshot().line.id).toBe('long')
+    expect(controller.snapshot().line.id).toBe('short')
     controller.dispose()
   })
   it('continues free play beyond learned prefixes and helps with unfamiliar continuations', async () => {

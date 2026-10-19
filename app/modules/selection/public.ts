@@ -9,6 +9,10 @@ export interface SelectionInput {
   random: () => number
   lastLineId?: string
 }
+export type LearningOrderInput = Pick<
+  SelectionInput,
+  'lines' | 'progress' | 'side' | 'lastLineId'
+>
 export interface LessonChoice {
   line: OpeningLine
   reason: 'unlearned' | 'review' | 'variety'

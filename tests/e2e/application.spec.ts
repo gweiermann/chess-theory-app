@@ -32,9 +32,12 @@ const longestItalian = [
   'Nxh7',
 ]
 
-async function playLongestItalian(page: Page) {
+async function playWhiteLine(
+  page: Page,
+  moves: readonly string[] = longestItalian,
+) {
   const game = new Chess()
-  for (const san of longestItalian) {
+  for (const san of moves) {
     const learnerTurn = game.turn() === 'w'
     const played = game.move(san)
     if (learnerTurn) await move(page, played.from, played.to)
@@ -107,7 +110,35 @@ test('cold page contains a loading shell and the full app becomes usable', async
   ).toBe(true)
 })
 
-test('new learning follows complete Italian leaves and selects the deepest sibling next', async ({
+test('new learning starts at the shortest complete Italian line and advances to a nearby short sibling', async ({
+  page,
+}) => {
+  await configure(page)
+  await page.goto('/openings')
+  await expect(page.locator('.line-card')).toHaveCount(109)
+  await expect(page.locator('.line-card').first()).toHaveAttribute(
+    'data-testid',
+    'line-C50-07dbed3d8c7b89408abf',
+  )
+  await expect(page.getByTestId('line-C50-9be1bdf94f6d382ed8f5')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Nächste Variante lernen' }).click()
+  await expect(page).toHaveURL(/line=C50-07dbed3d8c7b89408abf/)
+  await page.getByRole('link', { name: 'Verlassen' }).click()
+  await page.getByRole('button', { name: 'Neue Variante lernen →' }).click()
+  await expect(page).toHaveURL(/line=C50-07dbed3d8c7b89408abf/)
+  await page.clock.install()
+  await page.clock.pauseAt(new Date(Date.now() + 1000))
+  const shortLine = ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'h6']
+  await playWhiteLine(page, shortLine)
+  await page.clock.runFor(650)
+  await playWhiteLine(page, shortLine)
+  await expect(page.getByTestId('round-complete')).toContainText('gemeistert')
+  await page.clock.resume()
+  await page.getByRole('button', { name: 'Nächste Runde →' }).click()
+  await expect(page).toHaveURL(/line=C50-0d76b7661d5454a6f5bb/)
+})
+
+test('a manually selected long Italian lesson still progresses to its deepest sibling', async ({
   page,
 }) => {
   test.setTimeout(60000)
@@ -116,19 +147,25 @@ test('new learning follows complete Italian leaves and selects the deepest sibli
   await expect(
     page.getByRole('heading', { name: 'Italienisch', exact: true }),
   ).toBeVisible()
-  await expect(page.locator('.line-card')).toHaveCount(114)
+  await expect(page.locator('.line-card')).toHaveCount(109)
   await expect(page.getByTestId('line-C50-9be1bdf94f6d382ed8f5')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Nächste Variante lernen' }).click()
+  await page.getByLabel('Variante oder Zugfolge suchen').fill('Therkatz-Herzog')
+  await page
+    .getByRole('button', {
+      name: 'Lernen: Italian Game: Giuoco Piano, Therkatz-Herzog Variation',
+      exact: true,
+    })
+    .click()
   await expect(page).toHaveURL(/line=C54-052bf93dbba66694a081/)
   await page.clock.install()
   await page.clock.pauseAt(new Date(Date.now() + 1000))
-  await playLongestItalian(page)
+  await playWhiteLine(page)
   await expect(page.getByTestId('training-phase')).toHaveText(
     'Aus dem Gedächtnis',
   )
   await page.clock.runFor(650)
   await expect(page.getByTestId('square-e2')).toHaveAttribute('data-piece', 'p')
-  await playLongestItalian(page)
+  await playWhiteLine(page)
   await expect(page.getByTestId('round-complete')).toContainText('gemeistert')
   await page.clock.resume()
   await page.getByRole('button', { name: 'Nächste Runde →' }).click()
@@ -242,9 +279,11 @@ test('sparring accepts alternate continuations and presents optional suggestions
   ).toBeEnabled()
   await page.getByRole('button', { name: 'Anderen Weg zeigen' }).click()
   await expect(page.locator('svg [data-purpose="exploration"]')).toBeVisible()
-  // Both Bc4 and d4 are real Italian-source continuations at this position.
-  await move(page, 'd2', 'd4')
-  await expect(page.getByTestId('square-d2')).not.toHaveAttribute(
+  await expect(page.getByTestId('square-c4')).toHaveAttribute('data-piece', 'b')
+  await expect(page.getByTestId('square-c5')).toHaveAttribute('data-piece', 'b')
+  // The Evans Gambit branches after the Italian bishop development.
+  await move(page, 'b2', 'b4')
+  await expect(page.getByTestId('square-b2')).not.toHaveAttribute(
     'data-piece',
     'p',
   )

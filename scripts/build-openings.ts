@@ -71,6 +71,40 @@ export function parseSource(text: string, sourceId: string): OpeningLine[] {
   })
 }
 
+/** Course membership follows move order; source names describe reached positions. */
+export function selectCourse(
+  records: readonly OpeningLine[],
+  name: string,
+): Family {
+  const roots = records.filter((line) => line.name === name)
+  const shortest = Math.min(...roots.map((line) => line.moves.length))
+  const candidates = roots
+    .filter((line) => line.moves.length === shortest)
+    .sort((a, b) => a.id.localeCompare(b.id))
+  if (!candidates.length) throw new Error(`Missing course anchor: ${name}`)
+  if (new Set(candidates.map((line) => JSON.stringify(line.moves))).size !== 1)
+    throw new Error(`Ambiguous course anchor: ${name}`)
+  const anchor = candidates[0]!
+  const lines = records
+    .filter((line) =>
+      anchor.moves.every((move, index) => line.moves[index] === move),
+    )
+    .map((line) => ({
+      ...line,
+      familyId: anchor.familyId,
+      topicId: anchor.topicId,
+    }))
+  return {
+    summary: {
+      id: anchor.familyId,
+      name,
+      topicId: anchor.topicId,
+      lineCount: lines.length,
+    },
+    lines,
+  }
+}
+
 export async function buildOpenings(root = process.cwd()): Promise<Catalog> {
   const sourceFiles = ['a', 'b', 'c', 'd', 'e'].map((letter) => `${letter}.tsv`)
   const contents = await Promise.all(
@@ -78,28 +112,18 @@ export async function buildOpenings(root = process.cwd()): Promise<Catalog> {
       readFile(resolve(root, 'data/source', file), 'utf8'),
     ),
   )
+  const records = contents.flatMap((text, index) =>
+    parseSource(text, sourceFiles[index]!),
+  )
+  const course = selectCourse(records, 'Italian Game')
   const revision = hash(
-    'italian-only-v1\0' +
+    `move-order-course-v2\0${course.summary.name}\0` +
       contents
         .map((text, index) => `${sourceFiles[index]}\0${text}`)
         .join('\0'),
   )
-  const lines = contents
-    .flatMap((text, index) => parseSource(text, sourceFiles[index]!))
-    .filter((line) => line.name.split(':')[0]!.trim() === 'Italian Game')
-  const groups = new Map<string, OpeningLine[]>()
-  for (const line of lines)
-    groups.set(line.familyId, [...(groups.get(line.familyId) ?? []), line])
-  const families: Family[] = [...groups].map(([id, records]) => ({
-    summary: {
-      id,
-      name: records[0]!.name.split(':')[0]!.trim(),
-      topicId: records[0]!.topicId,
-      lineCount: records.length,
-    },
-    lines: records,
-  }))
-  families.sort((a, b) => a.summary.name.localeCompare(b.summary.name))
+  const lines = course.lines
+  const families = [course]
   const catalog: Catalog = {
     version: 1,
     revision,
@@ -139,6 +163,14 @@ export async function buildOpenings(root = process.cwd()): Promise<Catalog> {
       {
         version: 1,
         scope: 'Italian Game',
+        selection: {
+          policy:
+            'Exact SAN prefix of the shortest unambiguous exact-name source record',
+          anchorMoves: records
+            .filter((line) => line.name === course.summary.name)
+            .sort((a, b) => a.moves.length - b.moves.length)[0]!.moves,
+          positionNames: 'Original source names, including transpositions',
+        },
         revision,
         source: {
           url: 'https://github.com/lichess-org/chess-openings',
